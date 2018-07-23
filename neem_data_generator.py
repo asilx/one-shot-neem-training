@@ -1,0 +1,340 @@
+""" Code for extracting data from NEEMs and batching them together with images. Developer: Asil Kaan Bozcuoglu """
+from __future__ import division
+import re
+import pandas as pd
+import os
+import rospy
+import readline
+import sys
+from json_prolog import PrologException, Prolog 
+from json_prolog_commandline import PQ
+
+
+
+import copy
+import logging
+import os
+import os.path
+import glob
+import tempfile
+import pickle
+from datetime import datetime
+from collections import OrderedDict
+
+import numpy as np
+import random
+import tensorflow as tf
+from utils import extract_demo_dict, Timer
+from tensorflow.python.platform import flags
+from natsort import natsorted
+from random import shuffle
+
+FLAGS = flags.FLAGS
+
+class NEEM(object):
+    def __init__(self, config={}):
+        self.path = []
+        self.traj = []
+class Sample(object):
+    def __init__(self, config={}):
+        self.indices = []
+        self.paths = []
+
+class NEEMDataGenerator(object):
+    def __init__(self, config={}):
+        # Hyperparameters
+        self.number_of_shot = FLAGS.number_of_shot
+        self.test_batch_size = FLAGS.number_of_shot_train if FLAGS.number_of_shot_train != -1 else self.number_of_shot
+        self.meta_batch_size = FLAGS.meta_batch_size
+        self.T = FLAGS.TimeFrame
+
+        #self.image_data_dir = FLAGS.image_data_dir if FLAGS.image_data_dir is not None else FLAGS.experiment_dir
+        #self.image_data_prefix = FLAGS.image_data_prefix
+
+        self.total_iters = FLAGS.metatrain_iterations
+        TEST_PRINT_INTERVAL = 500
+
+        # Scale and bias for data normalization
+        self.scale, self.bias = None, None
+
+        # NEEMs related
+        self.neems = FLAGS.neems
+        self.local_model_path = FLAGS.local_model_path
+
+
+        self.prologquery = FLAGS.prologquery
+
+        #experiment_folders = FLAGS.experiment_path
+        experiment_folders = natsorted(glob.glob(self.local_model_path + '/*'))
+        experiment_subfolder_lengths = [] 
+
+        #total_subfolder_length = 0
+
+        #for itr in len(experiment_folders):
+        #    experiment_subfolder = natsorted(glob.glob(experiment_folders[itr] + '/*'))
+        #    total_subfolder_length = total_subfolder_length + len(experiment_subfolder)
+        #    experiment_subfolder_lengths.append(total_subfolder_length)
+
+        #range_exp = range(0, len(experiment_folders))
+
+        self.allepisodes = NEEM()
+
+        self.allepisodes.path, self.allepisodes.traj = self.bring_episodes_to_memory(experiment_folders)
+        demos = self.allepisodes.traj
+        self.state_idx = range(demos[0]['demoX'].shape[-1])
+        self._dU = demos[0]['demoU'].shape[-1]
+        if FLAGS.train:
+            # Normalize the states if it's training.
+            with Timer('Normalizing states'):
+                if self.scale is None or self.bias is None:
+                    states = np.vstack((demos[i]['demoX'] for i in xrange(len(demos)))) # hardcoded here to solve the memory issue
+                    states = states.reshape(-1, len(self.state_idx))
+                    # 1e-3 to avoid infs if some state dimensions don't change in the
+                    # first batch of samples
+                    self.scale = np.diag(
+                        1.0 / np.maximum(np.std(states, axis=0), 1e-3))
+                    self.bias = - np.mean(
+                        states.dot(self.scale), axis=0)
+                    # Save the scale and bias.
+                    with open('data/scale_and_bias_%s.pkl' % FLAGS.experiment, 'wb') as f:
+                        pickle.dump({'scale': self.scale, 'bias': self.bias}, f)
+                for key in xrange(len(demos)):
+                    self.allepisodes.traj[key]['demoX'] = demos[key]['demoX'].reshape(-1, len(self.state_idx))
+                    self.allepisodes.traj[key]['demoX'] = demos[key]['demoX'].dot(self.scale) + self.bias
+                    self.allepisodes.traj[key]['demoX'] = demos[key]['demoX'].reshape(-1, self.T, len(self.state_idx))
+
+
+        self.alltestepisodes = Sample()
+        self.alltestepisodes.indices, self.alltestepisodes.paths = self.sample_idx(FLAGS.end_test_set_size, FLAGS.number_of_shot_test, 0)       
+
+        # generate episode batches for training
+        if FLAGS.train:
+            self.alltrainepisodes = Sample()
+            self.allvalidationepisodes = Sample()
+
+            for itr in xrange(self.total_iters):
+                itr_data, itr_path = self.sample_idx(self.meta_batch_size, self.number_of_shot, self.test_batch_size)
+                self.alltrainepisodes.indices.extend(itr_data)
+                self.alltrainepisodes.paths.extend(itr_path)
+
+                #if itr != 0 and itr % TEST_PRINT_INTERVAL == 0:
+                if itr % TEST_PRINT_INTERVAL == 0:    
+                    val_data, val_path = self.sample_idx(self.meta_batch_size, self.number_of_shot, self.test_batch_size)
+                    self.allvalidationepisodes.indices.extend(val_data)
+                    self.allvalidationepisodes.paths.extend(val_path)
+
+    def bring_episodes_to_memory(self, folders):
+        range_exp = len(folders)
+
+        path = []
+        traj = []
+
+        for idx in xrange(range_exp):
+            experiment_subfolder = natsorted(glob.glob(folders[idx] + '/*'))
+            subrange_exp = len(experiment_subfolder)
+            episode_paths = []
+            demos=dict([('demoX', []), ('demoU', [])])
+            for ind in xrange(subrange_exp):
+                #current_path = folders[idx] + '/' + experiment_subfolder[ind]
+                current_path = experiment_subfolder[ind]
+                episode_paths.append(current_path + '/img/stream.gif')
+                self.extract_txt(current_path)
+                current_samples = self.extract_experiment_data(current_path + "/tf.txt")
+                demos['demoU'].append(current_samples['demoU'])
+                demos['demoX'].append(current_samples['demoX'])
+            demos['demoU'] = np.array(demos['demoU'])
+            demos['demoX'] = np.array(demos['demoX'])
+            path.append(episode_paths)
+            traj.append(demos)
+        return path, traj 
+
+    def sample_idx(self, batch_size, update_batch_size, test_batch_size):
+        range_exp = range(len(self.allepisodes.traj))
+        sampled_episode_folders = random.sample(range_exp, batch_size)
+        samples = []
+        paths = []
+        sampled_subepisodes = []
+        for idx in sampled_episode_folders:
+            subrange_exp = range(self.allepisodes.traj[idx]['demoX'].shape[0])
+            sampled_subepisodes = random.sample(subrange_exp, update_batch_size + test_batch_size)
+            for ind in sampled_subepisodes:
+                samples.append([idx,ind])
+                paths.append(self.allepisodes.path[idx][ind])
+        
+        return samples, paths
+               
+    #def idx_to_folder_path (self, idx, experiment_folders, subfolder_lengths):
+        #count = 0
+        #path = ""
+        #for sf in esubfolder_lengths:
+        #    if idx < sf:
+        #        episode_number =  idx - subfolder_lengths[count]
+        #        path = experiment_folders[itr] + '/episode' + episode_number
+        #        break
+        #    else count = count + 1
+        #return path
+
+        #self.testingepisodes = FLAGS.testingepisodes
+
+        #experiment_testing_files = FLAGS.experiment_testing_files
+        
+        #self.extract_txts(experiment_testing_files)
+
+        #experiment_testing_files = natsorted(glob.glob(experiment_testing_files + '/*txt'))
+
+        #self.testing_dataset_size = len(experiment_testing_files)  
+         
+        #self.extract_experiment_data(experiment_testing_files)
+
+        #if FLAGS.train:
+            #self.trainepisodes = FLAGS.trainepisodes
+            #self.validationepisodes = FLAGS.validationepisodes
+
+            #experiment_training_files = FLAGS.experiment_training_files
+            #experiment_validation_files = FLAGS.experiment_validation_files
+
+            #self.extract_txts(experiment_training_files)
+            #self.extract_txts(experiment_validation_files)
+
+            #experiment_training_files = natsorted(glob.glob(experiment_training_files + '/*txt'))
+            #experiment_validation_files = natsorted(glob.glob(experiment_validation_files + '/*txt'))
+
+            #self.training_dataset_size = len(experiment_training_files)
+            #self.validation_dataset_size = len(experiment_validation_files)
+            
+            #self.extract_experiment_data(experiment_training_files)
+            #self.extract_experiment_data(experiment_validation_files)
+       
+
+    def extract_txt(self, txtdirectory):
+        if not os.path.isfile(txtdirectory + "/tf.txt"):
+            prologquery = self.prologquery % (self.neems, txtdirectory)
+            prologinstance = PQ()
+            prologinstance.prolog_query()
+
+    def extract_experiment_data(self, txt_file_path):
+        content=dict([('demoX', []), ('demoU', [])])
+        with open(txt_file_path, 'r') as f:
+            data = f.readlines()
+        velocity_part = False
+        for line in data:
+            if line == '===\n':
+                velocity_part = True
+                continue
+            else:
+                chunk = line.split()
+                sample = []
+                sample.append(float(chunk[0]))
+                sample.append(float(chunk[1]))
+                sample.append(float(chunk[2]))
+                sample.append(float(chunk[3]))
+                sample.append(float(chunk[4]))
+                sample.append(float(chunk[5]))
+                sample.append(float(chunk[6]))
+            if velocity_part == False:
+                content['demoX'].append(np.array(sample))
+            else:
+                content['demoU'].append(np.array(sample))
+        return content
+
+    def make_batch_tensor(self, network_config, train=True):
+        batch_image_size = (self.number_of_shot + self.test_batch_size) * self.meta_batch_size
+       
+        im_height = network_config['image_height']
+        im_width = network_config['image_width']
+        num_channels = network_config['image_channels']
+
+        if train:
+            all_filenames = self.alltrainepisodes.paths
+        else:
+            all_filenames = self.allvalidationepisodes.paths
+
+        im_height = network_config['image_height']
+        im_width = network_config['image_width']
+        num_channels = network_config['image_channels']
+        # make queue for tensorflow to read from"
+        filename_queue = tf.train.string_input_producer(tf.convert_to_tensor(all_filenames), shuffle=False)
+
+        image_reader = tf.WholeFileReader()
+        _, image_file = image_reader.read(filename_queue)
+        image = tf.image.decode_gif(image_file)
+        # should be T x C x W x H
+        image.set_shape((self.T, im_height, im_width, num_channels))
+        image = tf.cast(image, tf.float32)
+        image /= 255.0
+
+        image = tf.transpose(image, perm=[0, 3, 2, 1]) # transpose to mujoco setting for images
+        image = tf.reshape(image, [self.T, -1])
+        num_preprocess_threads = 1 # TODO - enable this to be set to >1
+        min_queue_examples = 64 #128 #256
+        print 'Batching images'
+        images = tf.train.batch(
+                [image],
+                batch_size = batch_image_size,
+                num_threads=num_preprocess_threads,
+                capacity=min_queue_examples + 3 * batch_image_size,
+                )
+        all_images = []
+        for i in xrange(self.meta_batch_size):
+            image = images[i*(self.number_of_shot+self.test_batch_size):(i+1)*(self.number_of_shot+self.test_batch_size)]
+            image = tf.reshape(image, [(self.number_of_shot+self.test_batch_size)*self.T, -1])
+            all_images.append(image)
+        return tf.stack(all_images)
+
+    def generate_data_batch(self, itr, train=True):
+        demos = self.allepisodes.traj
+        if train:
+            indices = self.alltrainepisodes.indices[itr*(self.number_of_shot+self.test_batch_size):(itr+1)*(self.number_of_shot+self.test_batch_size)]
+        else:
+            indices = self.allvalidationepisodes.indices[itr*(self.number_of_shot+self.test_batch_size):(itr+1)*(self.number_of_shot+self.test_batch_size)]
+
+        batch_size = self.meta_batch_size
+        update_batch_size = self.number_of_shot
+        test_batch_size = self.test_batch_size
+        
+        demo_size = len(indices)
+        U = []
+        X = []
+
+        for i in xrange(demo_size):
+            U.append(demos[indices[i][0]]['demoU'][indices[i][1]])
+            X.append(demos[indices[i][0]]['demoX'][indices[i][1]])
+             
+
+        #for i in xrange(demo_size):
+        #    pose_size = len(demos[i].pose)
+        #    velocity_size = len(demos[i].velocity)
+
+        #    for j in xrange(0, pose_size, (test_batch_size+update_batch_size)*self.T):
+        #        pose = []
+        #        for k in xrange((test_batch_size+update_batch_size)*self.T):
+        #            pose = demos[i]['demoX'][j+k]
+        #        X.append(pose)
+
+        #    for j in xrange(0, velocity_size, (test_batch_size+update_batch_size)*self.T)
+        #        velocity = []
+        #        for k in xrange((test_batch_size+update_batch_size)*self.T):
+        #            velocity = demos[i]['demoU'][j+k]
+                    #velocity.append(demos[i].velocity[j+k].y)
+                    #velocity.append(demos[i].velocity[j+k].z)
+                    #velocity.append(demos[i].velocity[j+k].qw)
+                    #velocity.append(demos[i].velocity[j+k].qx)
+                    #velocity.append(demos[i].velocity[j+k].qy)
+                    #velocity.append(demos[i].velocity[j+k].qz)
+        #        U.append(velocity)
+
+        U = np.array(U)
+        X = np.array(X)
+
+        U = U.reshape(batch_size, (test_batch_size+update_batch_size)*self.T, -1)
+        X = X.reshape(batch_size, (test_batch_size+update_batch_size)*self.T, -1)
+
+        #print U.shape
+        #print X.shape
+
+        #print self._dU
+        #print len(self.state_idx)
+
+        assert U.shape[2] == self._dU
+        assert X.shape[2] == len(self.state_idx)
+        return X, U

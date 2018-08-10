@@ -3,7 +3,7 @@ import random
 import tensorflow as tf
 import logging
 import imageio
-import uuid
+import rospy
 
 from neem_data_generator import NEEM, NEEMDataGenerator as DataGenerator
 from mil import MIL
@@ -16,12 +16,14 @@ flags.DEFINE_integer('number_of_shot', 1, 'number of examples used for inner gra
 flags.DEFINE_integer('number_of_shot_train', -1, 'number of examples used for gradient update during training (use if you want to test with a different number).')
 flags.DEFINE_integer('number_of_shot_test', 1, 'number of demos used during test time')
 
-flags.DEFINE_integer('metatrain_iterations', 1, 'number of metatraining iterations.')
+#flags.DEFINE_integer('metatrain_iterations', 1, 'number of metatraining iterations.')
+flags.DEFINE_integer('metatrain_iterations', 50000, 'number of metatraining iterations.')
 flags.DEFINE_integer('meta_batch_size', 1, 'number of tasks sampled per meta-update')
 flags.DEFINE_float('meta_lr', 0.001, 'the base learning rate of the generator')
-flags.DEFINE_integer('TimeFrame', 100, 'time horizon of the demo videos')
+flags.DEFINE_integer('TimeFrame', 16, 'time horizon of the demo videos')
 flags.DEFINE_integer('end_test_set_size', 1, 'size of the test set, 150 for sim_reach and 76 for sim push')
-flags.DEFINE_integer('all_set_size', 1000, 'size of whole set')
+#flags.DEFINE_integer('all_set_size', 1000, 'size of whole set')
+flags.DEFINE_integer('val_set_size', 100, 'size of the training set, 150 for sim_reach and 76 for sim push')
 
 flags.DEFINE_bool('clip', False, 'use gradient clipping for fast gradient')
 flags.DEFINE_float('clip_max', 10.0, 'maximum clipping value for fast gradient')
@@ -53,11 +55,15 @@ flags.DEFINE_bool('no_final_eept', False, 'do not include final ee pos in the de
 flags.DEFINE_bool('zero_state', False, 'zero-out states (meta-learn state) in the demonstrations for inner update (used in the paper with video-only demos)')
 flags.DEFINE_bool('two_arms', False, 'use two-arm structure when state is zeroed-out')
 
-flags.DEFINE_string('prologquery', 'A is 1.', 'neem set in openease')
-flags.DEFINE_string('neems', '/episodes/Playing-In-Kitchen', 'neem set in openease')
-flags.DEFINE_string('local_model_path', '/media/asil/Tuna/episodes/Playing-In-Kitchen', 'neem set in openease')
-flags.DEFINE_integer('im_width', 125, 'width of the images in the demo videos,  125 for sim_push, and 80 for sim_vision_reach')
-flags.DEFINE_integer('im_height', 125, 'height of the images in the demo videos, 125 for sim_push, and 64 for sim_vision_reach')
+flags.DEFINE_string('featurizequery', 'A is 1.', 'neem set in openease')
+flags.DEFINE_string('initquery', 'register_ros_package(\'knowrob_openease\').', 'neem set in openease')
+flags.DEFINE_string('retractquery', 'rdf_retractall(A, B, C).', 'neem set in openease')
+flags.DEFINE_string('parsequery', 'owl_parse(\'%s\').', 'neem set in openease')
+flags.DEFINE_string('timequery', 'interval_start(\'http://knowrob.org/kb/unreal_log.owl#%s\', St).', 'neem set in openease')
+flags.DEFINE_string('neems', '/media/asil/Tuna/others/', 'neem set in openease')
+flags.DEFINE_string('local_model_path', '/media/asil/Tuna/low_res_data', 'neem set in openease')
+flags.DEFINE_integer('im_width', 216, 'width of the images in the demo videos,  125 for sim_push, and 80 for sim_vision_reach')
+flags.DEFINE_integer('im_height', 120, 'height of the images in the demo videos, 125 for sim_push, and 64 for sim_vision_reach')
 flags.DEFINE_integer('num_channels', 3, 'number of channels of the images in the demo videos')
 flags.DEFINE_integer('num_fc_layers', 3, 'number of fully-connected layers')
 flags.DEFINE_integer('layer_size', 100, 'hidden dimension of fully-connected layers')
@@ -89,6 +95,8 @@ flags.DEFINE_bool('conv', True, 'whether or not to use a convolutional network, 
 flags.DEFINE_bool('record_gifs', True, 'record gifs during evaluation')
 
 flags.DEFINE_bool('train', True, 'training or testing')
+flags.DEFINE_bool('resume', False, 'resume training if there is a model available')
+flags.DEFINE_integer('restore_iter', 0, 'iteration to load model (-1 for latest model)')
 
 def train(graph, model, saver, sess, data_generator, log_dir):
     """
@@ -133,7 +141,7 @@ def train(graph, model, saver, sess, data_generator, log_dir):
         if itr != 0 and itr % TEST_PRINT_INTERVAL == 0:
             if FLAGS.val_set_size > 0:
                 input_tensors = [model.val_summ_op, model.val_total_loss1, model.val_total_losses2[model.num_updates-1]]
-                val_state, val_act = data_generator.generate_data_batch(itr, train=False)
+                val_state, val_act = data_generator.generate_data_batch((itr / TEST_PRINT_INTERVAL)-1, train=False)
                 statea = val_state[:, :FLAGS.number_of_shot*FLAGS.TimeFrame, :]
                 stateb = val_state[:, FLAGS.number_of_shot*FLAGS.TimeFrame:, :]
                 actiona = val_act[:, :FLAGS.number_of_shot*FLAGS.TimeFrame, :]
@@ -264,8 +272,7 @@ def main():
     img_idx = range(len(state_idx), len(state_idx)+FLAGS.im_height*FLAGS.im_width*FLAGS.num_channels)
     model = MIL(data_generator._dU, state_idx=state_idx, img_idx=img_idx, network_config=network_config)
 
-    exp_string = str(uuid.uuid4())
-    log_dir = FLAGS.local_model_path + '/' + exp_string
+    log_dir = FLAGS.local_model_path + '/../logged_model' 
 
     if FLAGS.train:
         with graph.as_default():
@@ -289,6 +296,16 @@ def main():
         sess.run(init_op, feed_dict=None)
         # Start queue runners (used for loading videos on the fly)
         tf.train.start_queue_runners(sess=sess)
+    if FLAGS.resume:
+        model_file = tf.train.latest_checkpoint(log_dir)
+        if FLAGS.restore_iter > 0:
+            model_file = model_file[:model_file.index('model')] + 'model_' + str(FLAGS.restore_iter)
+        if model_file:
+            ind1 = model_file.index('model')
+            resume_itr = int(model_file[ind1+6:])
+            print("Restoring model weights from " + model_file)
+            with graph.as_default():
+                saver.restore(sess, model_file)
     if FLAGS.train:
         train(graph, model, saver, sess, data_generator, log_dir)
     else:
@@ -368,4 +385,5 @@ def evaluate_model(env, graph, model, data_generator, sess, exp_string, record_g
 
 
 if __name__ == "__main__":
+    rospy.init_node('deep_one_shot_learner')
     main()

@@ -6,6 +6,7 @@ import os
 import rospy
 import readline
 import sys
+import rospy
 from json_prolog import PrologException, Prolog 
 from json_prolog_commandline import PQ
 
@@ -22,12 +23,15 @@ from datetime import datetime
 from collections import OrderedDict
 
 import numpy as np
+import math
 import random
 import tensorflow as tf
 from utils import extract_demo_dict, Timer
 from tensorflow.python.platform import flags
 from natsort import natsorted
 from random import shuffle
+from PIL import Image
+import imageio
 
 FLAGS = flags.FLAGS
 
@@ -62,7 +66,14 @@ class NEEMDataGenerator(object):
         self.local_model_path = FLAGS.local_model_path
 
 
-        self.prologquery = FLAGS.prologquery
+        self.prologquery = FLAGS.featurizequery
+        self.initquery = FLAGS.initquery
+        self.retractquery = FLAGS.retractquery
+        self.parsequery = FLAGS.parsequery
+        self.timequery = FLAGS.timequery
+
+        prologinstance = PQ()
+        prologinstance.prolog_query(self.initquery)
 
         #experiment_folders = FLAGS.experiment_path
         experiment_folders = natsorted(glob.glob(self.local_model_path + '/*'))
@@ -87,6 +98,9 @@ class NEEMDataGenerator(object):
             # Normalize the states if it's training.
             with Timer('Normalizing states'):
                 if self.scale is None or self.bias is None:
+                    #for i in xrange(len(demos)):
+                    #    print len(demos[i]['demoX'])
+                    #    print self.allepisodes.path[i]
                     states = np.vstack((demos[i]['demoX'] for i in xrange(len(demos)))) # hardcoded here to solve the memory issue
                     states = states.reshape(-1, len(self.state_idx))
                     # 1e-3 to avoid infs if some state dimensions don't change in the
@@ -121,7 +135,24 @@ class NEEMDataGenerator(object):
                 if itr % TEST_PRINT_INTERVAL == 0:    
                     val_data, val_path = self.sample_idx(self.meta_batch_size, self.number_of_shot, self.test_batch_size)
                     self.allvalidationepisodes.indices.extend(val_data)
-                    self.allvalidationepisodes.paths.extend(val_path)
+                    self.allvalidationepisodes.paths.extend(val_path) 
+
+    def create_sub_gif(self, path, targetpath, start, end):
+        frame = Image.open(path)
+        images = []
+        for x in range(int(3 * math.floor(start)), (int(3* math.floor(end)) + 1)):
+            try:
+                frame.seek(x)
+                new_im = Image.new("RGB", frame.size)
+                new_im.paste(frame)
+                images.append(np.array(new_im))
+            except EOFError:
+                break;
+        if len(images) < self.T:
+            print 'Subgif frame count is less than 16. Fixing it' 
+            self.create_sub_gif(path, targetpath, start - 5, end - 5)
+        else:
+            imageio.mimsave(targetpath, images)
 
     def bring_episodes_to_memory(self, folders):
         range_exp = len(folders)
@@ -137,11 +168,35 @@ class NEEMDataGenerator(object):
             for ind in xrange(subrange_exp):
                 #current_path = folders[idx] + '/' + experiment_subfolder[ind]
                 current_path = experiment_subfolder[ind]
-                episode_paths.append(current_path + '/img/stream.gif')
-                self.extract_txt(current_path)
-                current_samples = self.extract_experiment_data(current_path + "/tf.txt")
-                demos['demoU'].append(current_samples['demoU'])
-                demos['demoX'].append(current_samples['demoX'])
+                for fname in os.listdir(current_path):
+                    if fname.endswith('.txt'):
+                        #episode_paths.append(current_path + '/imgs/animation.gif')
+                        self.extract_txt(current_path)
+                        current_samples = self.extract_experiment_data(current_path + "/" + fname)
+                        demos['demoU'].append(current_samples['demoU'])
+                        demos['demoX'].append(current_samples['demoX'])
+                        #current_samples['demoU'] = np.array(current_samples['demoU'])
+                        #current_samples['demoX'] = np.array(current_samples['demoX'])
+                        retractinstance = PQ()
+                        retractinstance.prolog_query(self.retractquery)
+                        neem_path = FLAGS.neems + os.path.basename(current_path) + "/v0/log.owl"
+                        parseinstance = PQ()
+                        parseinstance.prolog_query(self.parsequery % neem_path)
+                        timeinstance = PQ()
+                        taskname = os.path.basename(fname).replace('.txt', '')
+                        solutions = timeinstance.prolog_query(self.timequery % taskname)
+                        endtime = -1
+                        for s in solutions:
+                            for k, v in s.items():
+                                endtime = v
+                        starttime = endtime - 6
+                        endtime = endtime - 1
+                        print endtime
+                        targetpath = current_path + '/imgs/' + taskname + '.gif'
+                        self.create_sub_gif(current_path + '/imgs/animation.gif', targetpath, starttime, endtime)
+                        episode_paths.append(targetpath)
+                        #path.append(targetpath)
+                        #traj.append(current_samples)
             demos['demoU'] = np.array(demos['demoU'])
             demos['demoX'] = np.array(demos['demoX'])
             path.append(episode_paths)
@@ -159,8 +214,7 @@ class NEEMDataGenerator(object):
             sampled_subepisodes = random.sample(subrange_exp, update_batch_size + test_batch_size)
             for ind in sampled_subepisodes:
                 samples.append([idx,ind])
-                paths.append(self.allepisodes.path[idx][ind])
-        
+                paths.append(self.allepisodes.path[idx][ind])        
         return samples, paths
                
     #def idx_to_folder_path (self, idx, experiment_folders, subfolder_lengths):
@@ -207,10 +261,15 @@ class NEEMDataGenerator(object):
        
 
     def extract_txt(self, txtdirectory):
-        if not os.path.isfile(txtdirectory + "/tf.txt"):
+        feature_file_exist = False
+        for fname in os.listdir(txtdirectory):
+            if fname.endswith('.txt'):
+                feature_file_exist = True
+                break
+        if not feature_file_exist:
             prologquery = self.prologquery % (self.neems, txtdirectory)
             prologinstance = PQ()
-            prologinstance.prolog_query()
+            prologinstance.prolog_query(prologquery)
 
     def extract_experiment_data(self, txt_file_path):
         content=dict([('demoX', []), ('demoU', [])])
@@ -218,11 +277,11 @@ class NEEMDataGenerator(object):
             data = f.readlines()
         velocity_part = False
         for line in data:
-            if line == '===\n':
+            if line == '---\n':
                 velocity_part = True
                 continue
             else:
-                chunk = line.split()
+                chunk = line.split(',')
                 sample = []
                 sample.append(float(chunk[0]))
                 sample.append(float(chunk[1]))
@@ -288,6 +347,7 @@ class NEEMDataGenerator(object):
         else:
             indices = self.allvalidationepisodes.indices[itr*(self.number_of_shot+self.test_batch_size):(itr+1)*(self.number_of_shot+self.test_batch_size)]
 
+
         batch_size = self.meta_batch_size
         update_batch_size = self.number_of_shot
         test_batch_size = self.test_batch_size
@@ -299,7 +359,6 @@ class NEEMDataGenerator(object):
         for i in xrange(demo_size):
             U.append(demos[indices[i][0]]['demoU'][indices[i][1]])
             X.append(demos[indices[i][0]]['demoX'][indices[i][1]])
-             
 
         #for i in xrange(demo_size):
         #    pose_size = len(demos[i].pose)
@@ -325,15 +384,9 @@ class NEEMDataGenerator(object):
 
         U = np.array(U)
         X = np.array(X)
-
+        
         U = U.reshape(batch_size, (test_batch_size+update_batch_size)*self.T, -1)
         X = X.reshape(batch_size, (test_batch_size+update_batch_size)*self.T, -1)
-
-        #print U.shape
-        #print X.shape
-
-        #print self._dU
-        #print len(self.state_idx)
 
         assert U.shape[2] == self._dU
         assert X.shape[2] == len(self.state_idx)

@@ -137,7 +137,8 @@ class PQ(object):
         query = self.prolog.query(q)
         solutions = [x for x in query.solutions()]
         query.finish()
-        self.print_all_solutions(solutions)
+        #self.print_all_solutions(solutions)
+        return solutions
 
     def print_all_solutions(self, solutions):
         if len(solutions) == 0:

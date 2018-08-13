@@ -6,11 +6,24 @@ import imageio
 import rospy
 
 from neem_data_generator import NEEM, NEEMDataGenerator as DataGenerator
+from simple_reach_and_record import SimpleReachinRecordin as HSRBMover
 from mil import MIL
 from tensorflow.python.platform import flags
 
 FLAGS = flags.FLAGS
 LOGGER = logging.getLogger(__name__)
+
+flags.DEFINE_string('map_frame', 'map', '')
+flags.DEFINE_string('base_frame', 'base_link', '')
+flags.DEFINE_string('sensor_frame', 'map', '')
+flags.DEFINE_string('end_effector_frame', 'head_rgbd_sensor_rgb_frame', '')
+
+flags.DEFINE_string('rs_service', '/RoboSherlock_asil/query', '')
+flags.DEFINE_string('image_topic', '/hsrb/head_rgbd_sensor/rgb/image_raw', '')
+flags.DEFINE_string('omni_base', 'omni_base', '')
+flags.DEFINE_string('whole_body', 'whole_body', '')
+flags.DEFINE_string('gripper', 'gripper', '')
+
 
 flags.DEFINE_integer('number_of_shot', 1, 'number of examples used for inner gradient update (K for K-shot learning).')
 flags.DEFINE_integer('number_of_shot_train', -1, 'number of examples used for gradient update during training (use if you want to test with a different number).')
@@ -21,7 +34,7 @@ flags.DEFINE_integer('metatrain_iterations', 50000, 'number of metatraining iter
 flags.DEFINE_integer('meta_batch_size', 1, 'number of tasks sampled per meta-update')
 flags.DEFINE_float('meta_lr', 0.001, 'the base learning rate of the generator')
 flags.DEFINE_integer('TimeFrame', 16, 'time horizon of the demo videos')
-flags.DEFINE_integer('end_test_set_size', 1, 'size of the test set, 150 for sim_reach and 76 for sim push')
+#flags.DEFINE_integer('end_test_set_size', 1, 'size of the test set, 150 for sim_reach and 76 for sim push')
 #flags.DEFINE_integer('all_set_size', 1000, 'size of whole set')
 flags.DEFINE_integer('val_set_size', 100, 'size of the training set, 150 for sim_reach and 76 for sim push')
 
@@ -92,7 +105,6 @@ flags.DEFINE_integer('filter_size', 5, 'filter size for conv nets -- 3 for placi
 flags.DEFINE_integer('num_conv_layers', 4, 'number of conv layers -- 5 for placing, 4 for pushing, 3 for reaching.')
 flags.DEFINE_integer('num_strides', 4, 'number of conv layers with strided filters -- 3 for placing, 4 for pushing, 3 for reaching.')
 flags.DEFINE_bool('conv', True, 'whether or not to use a convolutional network, only applicable in some cases')
-flags.DEFINE_bool('record_gifs', True, 'record gifs during evaluation')
 
 flags.DEFINE_bool('train', True, 'training or testing')
 flags.DEFINE_bool('resume', False, 'resume training if there is a model available')
@@ -160,20 +172,26 @@ def train(graph, model, saver, sess, data_generator, log_dir):
             with graph.as_default():
                 saver.save(sess, save_dir + '_%d' % itr)
 
-def generate_test_demos(data_generator, network_config):
-    demos = data_generator.allepisodes.traj
-    indices = data_generator.alltestepisodes.indices
-    path = data_generator.alltestepisodes.paths
+
+def load_one_shot_data_from_path(folder_path, data_generator, network_config):
+    data_generator.alltestepisodes = data_generator.bring_episodes_to_memory(folder_path)
+    load_one_shot_data(data_generator, network_config)
+
+
+def load_one_shot_data(data_generator, network_config):
+    demos = data_generator.alltestepisodes.traj
+    #indices = data_generator.alltestepisodes.indices
+    paths = data_generator.alltestepisodes.paths
 
     Us = []
     Xs = []
     Os = []
     #all_filenames = []
-    for i in xrange(FLAGS.end_test_set_size):
-        Us.append(demos[indices[i][0]]['demoU'][indices[i][1]])
-        Xs.append(demos[indices[i][0]]['demoX'][indices[i][1]])
+    for i in xrange(FLAGS.number_of_shot):
+        Us.append(demos[0]['demoU'][i])
+        Xs.append(demos[0]['demoX'][i])
 
-        O = np.array(imageio.mimread(paths[i]))[:, :, :, :3]
+        O = np.array(imageio.mimread(paths[0][i]))[:, :, :, :3]
         O = np.transpose(O, [0, 3, 2, 1]) # transpose to mujoco setting for images
         O = O.reshape(FLAGS.T, -1) / 255.0 # normalize
 
@@ -309,8 +327,8 @@ def main():
     if FLAGS.train:
         train(graph, model, saver, sess, data_generator, log_dir)
     else:
-        generate_test_demos(data_generator, network_config)
-        evaluate_model(env, graph, model, data_generator, sess, exp_string, FLAGS.record_gifs, log_dir)
+        load_one_shot_data_from_path(data_generator, network_config)
+        control_robot(env, graph, model, data_generator, sess, exp_string, log_dir)
 
 def load_scale_and_bias(data_path):
     with open(data_path, 'rb') as f:
@@ -319,34 +337,30 @@ def load_scale_and_bias(data_path):
         bias = data['bias']
     return scale, bias
 
-def evaluate_model(env, graph, model, data_generator, sess, exp_string, record_gifs, log_dir):
+def control_robot(env, graph, model, data_generator, sess, exp_string, log_dir):
     REACH_SUCCESS_THRESH = 0.05
     REACH_SUCCESS_TIME_RANGE = 10
+    robot = SimpleReachinRecordin()
 
     T = model.TimeFrame
     scale, bias = load_scale_and_bias('data/scale_and_bias_%s.pkl' % FLAGS.experiment)
     successes = []
     selected_demo = data_generator.selected_demo
-    if record_gifs:
-        record_gifs_dir = os.path.join(log_dir, 'evaluated_gifs')
-        mkdir_p(record_gifs_dir)
     for i in xrange(len(selected_demo['selected_demoX'])):
         selected_demoO = selected_demo['selected_demoO'][i]
         selected_demoX = selected_demo['selected_demoX'][i]
         selected_demoU = selected_demo['selected_demoU'][i]
         path = selected_demo['path'][i]
-        if record_gifs:
-            gifs_dir = os.path.join(record_gifs_dir, path)
-            mkdir_p(gifs_dir)
         dists = []
         # ob = env.reset()
         # use env.set_state here to arrange blocks
         Os = []
+        obj = robot.detect()
         for t in range(T):
             # import pdb; pdb.set_trace()
-            env.render()
+            #env.render()
             time.sleep(0.05)
-            obs, state = env.env.get_current_image_obs()
+            obs, state, speed = robot.return_observation(FLAGS.image_topic, FLAGS.end_effector_frame, obj)
             Os.append(obs)
             obs = np.transpose(obs, [2, 1, 0]) / 255.0
             obs = obs.reshape(1, 1, -1)
@@ -360,25 +374,22 @@ def evaluate_model(env, graph, model, data_generator, sess, exp_string, record_g
              }
             with graph.as_default():
                 action = sess.run(model.test_act_op, feed_dict=feed_dict)
-            ob, reward, done, reward_dict = env.step(np.squeeze(action))
-            dist = -reward_dict['reward_dist']
+            robot.reach(action)
+            _, after_state, _ = robot.return_observation(FLAGS.image_topic, FLAGS.end_effector_frame, obj)
+            #ob, reward, done, reward_dict = env.step(np.squeeze(action))
+            dist = (after_state[0]**2 + after_state[1]**2 + after_state[2]**2) **(.5)
             if t >= T - REACH_SUCCESS_TIME_RANGE:
                 dists.append(dist)
         if np.amin(dists) <= REACH_SUCCESS_THRESH:
             successes.append(1.)
         else:
             successes.append(0.)
-        if record_gifs:
-            video = np.array(Os)
-            record_gif_path = os.path.join(gifs_dir, 'output.gif')
-            print 'Saving gif sample to :%s' % record_gif_path
-            imageio.mimwrite(record_gif_path, video)
-        env.render(close=True)
+        #env.render(close=True)
         if i % 5  == 0:
             print "Task %d: current success rate is %.5f" % (i, np.mean(successes))
     success_rate_msg = "Final success rate is %.5f" % (np.mean(successes))
     print success_rate_msg
-    with open('logs/log_sim_vision_reach.txt', 'a') as f:
+    with open('logs/log_%s.txt' % FLAGS.experiment, 'a') as f:
         f.write(exp_string + ':\n')
         f.write(success_rate_msg + '\n')
 
@@ -387,3 +398,4 @@ def evaluate_model(env, graph, model, data_generator, sess, exp_string, record_g
 if __name__ == "__main__":
     rospy.init_node('deep_one_shot_learner')
     main()
+    rospy.spin()

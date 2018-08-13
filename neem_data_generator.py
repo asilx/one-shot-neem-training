@@ -37,12 +37,12 @@ FLAGS = flags.FLAGS
 
 class NEEM(object):
     def __init__(self, config={}):
-        self.path = []
+        self.paths = []
         self.traj = []
 class Sample(object):
     def __init__(self, config={}):
-        self.indices = []
         self.paths = []
+        self.indices = []
 
 class NEEMDataGenerator(object):
     def __init__(self, config={}):
@@ -90,7 +90,7 @@ class NEEMDataGenerator(object):
 
         self.allepisodes = NEEM()
 
-        self.allepisodes.path, self.allepisodes.traj = self.bring_episodes_to_memory(experiment_folders)
+        self.allepisodes.paths, self.allepisodes.traj = self.bring_episodes_to_memory(experiment_folders)
         demos = self.allepisodes.traj
         self.state_idx = range(demos[0]['demoX'].shape[-1])
         self._dU = demos[0]['demoU'].shape[-1]
@@ -118,8 +118,8 @@ class NEEMDataGenerator(object):
                     self.allepisodes.traj[key]['demoX'] = demos[key]['demoX'].reshape(-1, self.T, len(self.state_idx))
 
 
-        self.alltestepisodes = Sample()
-        self.alltestepisodes.indices, self.alltestepisodes.paths = self.sample_idx(FLAGS.end_test_set_size, FLAGS.number_of_shot_test, 0)       
+        self.alltestepisodes = NEEM()
+        #self.alltestepisodes.indices, self.alltestepisodes.paths = self.sample_idx(FLAGS.end_test_set_size, FLAGS.number_of_shot_test, 0)       
 
         # generate episode batches for training
         if FLAGS.train:
@@ -214,7 +214,7 @@ class NEEMDataGenerator(object):
             sampled_subepisodes = random.sample(subrange_exp, update_batch_size + test_batch_size)
             for ind in sampled_subepisodes:
                 samples.append([idx,ind])
-                paths.append(self.allepisodes.path[idx][ind])        
+                paths.append(self.allepisodes.paths[idx][ind])        
         return samples, paths
                
     #def idx_to_folder_path (self, idx, experiment_folders, subfolder_lengths):

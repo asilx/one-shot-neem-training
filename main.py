@@ -13,17 +13,6 @@ from tensorflow.python.platform import flags
 FLAGS = flags.FLAGS
 LOGGER = logging.getLogger(__name__)
 
-flags.DEFINE_string('map_frame', 'map', '')
-flags.DEFINE_string('base_frame', 'base_link', '')
-flags.DEFINE_string('sensor_frame', 'map', '')
-flags.DEFINE_string('end_effector_frame', 'head_rgbd_sensor_rgb_frame', '')
-
-flags.DEFINE_string('rs_service', '/RoboSherlock_asil/query', '')
-flags.DEFINE_string('image_topic', '/hsrb/head_rgbd_sensor/rgb/image_raw', '')
-flags.DEFINE_string('omni_base', 'omni_base', '')
-flags.DEFINE_string('whole_body', 'whole_body', '')
-flags.DEFINE_string('gripper', 'gripper', '')
-
 
 flags.DEFINE_integer('number_of_shot', 1, 'number of examples used for inner gradient update (K for K-shot learning).')
 flags.DEFINE_integer('number_of_shot_train', -1, 'number of examples used for gradient update during training (use if you want to test with a different number).')

@@ -5,7 +5,6 @@ import tf2_geometry_msgs
 import tf
 
 from tf import TransformListener
-from action import Action
 from robosherlock_msgs.srv import RSQueryService
 from geometry_msgs.msg import PoseStamped
 from geometry_msgs.msg import Twist
@@ -16,10 +15,23 @@ import cv2
 import sys
 from hsrb_interface import geometry
 
+from tensorflow.python.platform import flags
+
 FLAGS = flags.FLAGS
 cv2_img = ''
 bridge = CvBridge()
-heart_a_message = false
+heart_a_message = False
+
+flags.DEFINE_string('map_frame', 'map', '')
+flags.DEFINE_string('base_frame', 'base_link', '')
+flags.DEFINE_string('sensor_frame', 'map', '')
+flags.DEFINE_string('end_effector_frame', 'head_rgbd_sensor_rgb_frame', '')
+
+flags.DEFINE_string('rs_service', '/RoboSherlock_asil/query', '')
+flags.DEFINE_string('image_topic', '/hsrb/head_rgbd_sensor/rgb/image_raw', '')
+flags.DEFINE_string('omni_base', 'omni_base', '')
+flags.DEFINE_string('whole_body', 'whole_body', '')
+flags.DEFINE_string('gripper', 'gripper', '')
 
 class SimpleReachinRecordin(object):
     def __init__(self, config={}):

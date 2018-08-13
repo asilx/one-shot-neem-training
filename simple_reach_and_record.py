@@ -13,6 +13,7 @@ from cv_bridge import CvBridge, CvBridgeError
 import cv2
 
 import sys
+import hsrb_interface
 from hsrb_interface import geometry
 
 from tensorflow.python.platform import flags
@@ -43,14 +44,16 @@ class SimpleReachinRecordin(object):
         rospy.wait_for_service(FLAGS.rs_service)
         self.detector = rospy.ServiceProxy(FLAGS.rs_service, RSQueryService)
         self.robot = hsrb_interface.Robot()
-        self.omni_base = robot.get(FLAGS.omni_base)
-        self.whole_body = robot.get(FLAGS.whole_body)
-        self.gripper = robot.get(FLAGS.gripper)
+        self.omni_base = self.robot.get(FLAGS.omni_base)
+        self.whole_body = self.robot.get(FLAGS.whole_body)
+        self.gripper = self.robot.get(FLAGS.gripper)
         self.tf_env = TransformListener()
     
     def detect(self, query='{\"detect\":{\"color\":\"yellow\"}}'):
         try:
+            print 'here1'
             res = self.detector(query)
+            print 'here2'
         except rospy.ServiceException, e:
             print "Service call failed: %s"%e
         if len(res.answer) != 1:

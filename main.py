@@ -63,7 +63,7 @@ flags.DEFINE_bool('shuffle_val', False, 'whether to choose the validation set vi
 flags.DEFINE_bool('fp', True, 'use spatial soft-argmax or not')
 
 flags.DEFINE_bool('no_action', False, 'do not include actions in the demonstrations for inner update')
-flags.DEFINE_bool('no_state', False, 'do not include states in the demonstrations during training')
+flags.DEFINE_bool('no_state', True, 'do not include states in the demonstrations during training') # TODO
 flags.DEFINE_bool('no_final_eept', False, 'do not include final ee pos in the demonstrations for inner update')
 flags.DEFINE_bool('zero_state', False, 'zero-out states (meta-learn state) in the demonstrations for inner update (used in the paper with video-only demos)')
 flags.DEFINE_bool('two_arms', False, 'use two-arm structure when state is zeroed-out')
@@ -80,8 +80,8 @@ flags.DEFINE_integer('im_height', 120, 'height of the images in the demo videos,
 flags.DEFINE_integer('num_channels', 3, 'number of channels of the images in the demo videos')
 flags.DEFINE_integer('num_fc_layers', 3, 'number of fully-connected layers')
 flags.DEFINE_integer('layer_size', 100, 'hidden dimension of fully-connected layers')
-flags.DEFINE_bool('temporal_conv_2_head', False, 'whether or not to use temporal convolutions for the two-head architecture in video-only setting.')
-flags.DEFINE_bool('temporal_conv_2_head_ee', False, 'whether or not to use temporal convolutions for the two-head architecture in video-only setting for predicting the ee pose.')
+flags.DEFINE_bool('temporal_conv_2_head', True, 'whether or not to use temporal convolutions for the two-head architecture in video-only setting.') # TODO
+flags.DEFINE_bool('temporal_conv_2_head_ee', False, 'whether or not to use temporal convolutions for the two-head architecture in video-only setting for predicting the ee pose.') # TODO
 flags.DEFINE_integer('temporal_filter_size', 5, 'filter size for temporal convolution')
 flags.DEFINE_integer('temporal_num_filters', 64, 'number of filters for temporal convolution')
 flags.DEFINE_integer('temporal_num_filters_ee', 64, 'number of filters for temporal convolution for ee pose prediction')

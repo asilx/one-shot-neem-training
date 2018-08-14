@@ -6,3 +6,5 @@
 - knowrob
 - python 2.7
 - imageio
+- pandas
+- natsort

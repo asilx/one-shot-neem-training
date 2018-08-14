@@ -6,7 +6,7 @@ import imageio
 import rospy
 
 from neem_data_generator import NEEM, NEEMDataGenerator as DataGenerator
-from simple_reach_and_record import SimpleReachinRecordin as HSRBMover
+#from simple_reach_and_record import SimpleReachinRecordin as HSRBMover
 from mil import MIL
 from tensorflow.python.platform import flags
 

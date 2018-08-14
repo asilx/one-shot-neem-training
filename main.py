@@ -73,8 +73,8 @@ flags.DEFINE_string('initquery', 'register_ros_package(\'knowrob_openease\').', 
 flags.DEFINE_string('retractquery', 'rdf_retractall(A, B, C).', 'neem set in openease')
 flags.DEFINE_string('parsequery', 'owl_parse(\'%s\').', 'neem set in openease')
 flags.DEFINE_string('timequery', 'interval_start(\'http://knowrob.org/kb/unreal_log.owl#%s\', St).', 'neem set in openease')
-flags.DEFINE_string('neems', '/media/asil/Tuna/others/', 'neem set in openease')
-flags.DEFINE_string('local_model_path', '/media/asil/Tuna/low_res_data', 'neem set in openease')
+flags.DEFINE_string('neems', '/home/befreor/Research/Genko/datas/others/', 'neem set in openease')
+flags.DEFINE_string('local_model_path', '/home/befreor/Research/Genko/datas/low_res_data', 'neem set in openease')
 flags.DEFINE_integer('im_width', 216, 'width of the images in the demo videos,  125 for sim_push, and 80 for sim_vision_reach')
 flags.DEFINE_integer('im_height', 120, 'height of the images in the demo videos, 125 for sim_push, and 64 for sim_vision_reach')
 flags.DEFINE_integer('num_channels', 3, 'number of channels of the images in the demo videos')
@@ -290,7 +290,7 @@ def main():
     img_idx = range(len(state_idx), len(state_idx)+FLAGS.im_height*FLAGS.im_width*FLAGS.num_channels)
     model = MIL(data_generator._dU, state_idx=state_idx, img_idx=img_idx, network_config=network_config)
 
-    log_dir = FLAGS.local_model_path + '/../logged_model' 
+    log_dir = FLAGS.local_model_path + '/../logged_model'
 
     if FLAGS.train:
         with graph.as_default():

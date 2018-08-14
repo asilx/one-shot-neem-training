@@ -7,7 +7,7 @@ import rospy
 import readline
 import sys
 import rospy
-from json_prolog import PrologException, Prolog 
+from json_prolog import PrologException, Prolog
 from json_prolog_commandline import PQ
 
 
@@ -77,7 +77,7 @@ class NEEMDataGenerator(object):
 
         #experiment_folders = FLAGS.experiment_path
         experiment_folders = natsorted(glob.glob(self.local_model_path + '/*'))
-        experiment_subfolder_lengths = [] 
+        experiment_subfolder_lengths = []
 
         #total_subfolder_length = 0
 
@@ -119,7 +119,7 @@ class NEEMDataGenerator(object):
 
 
         self.alltestepisodes = NEEM()
-        #self.alltestepisodes.indices, self.alltestepisodes.paths = self.sample_idx(FLAGS.end_test_set_size, FLAGS.number_of_shot_test, 0)       
+        #self.alltestepisodes.indices, self.alltestepisodes.paths = self.sample_idx(FLAGS.end_test_set_size, FLAGS.number_of_shot_test, 0)
 
         # generate episode batches for training
         if FLAGS.train:
@@ -132,10 +132,10 @@ class NEEMDataGenerator(object):
                 self.alltrainepisodes.paths.extend(itr_path)
 
                 #if itr != 0 and itr % TEST_PRINT_INTERVAL == 0:
-                if itr % TEST_PRINT_INTERVAL == 0:    
+                if itr % TEST_PRINT_INTERVAL == 0:
                     val_data, val_path = self.sample_idx(self.meta_batch_size, self.number_of_shot, self.test_batch_size)
                     self.allvalidationepisodes.indices.extend(val_data)
-                    self.allvalidationepisodes.paths.extend(val_path) 
+                    self.allvalidationepisodes.paths.extend(val_path)
 
     def create_sub_gif(self, path, targetpath, start, end):
         frame = Image.open(path)
@@ -149,7 +149,7 @@ class NEEMDataGenerator(object):
             except EOFError:
                 break;
         if len(images) < self.T:
-            print 'Subgif frame count is less than 16. Fixing it' 
+            print 'Subgif frame count is less than 16. Fixing it'
             self.create_sub_gif(path, targetpath, start - 5, end - 5)
         else:
             imageio.mimsave(targetpath, images)
@@ -191,7 +191,7 @@ class NEEMDataGenerator(object):
                                 endtime = v
                         starttime = endtime - 6
                         endtime = endtime - 1
-                        print endtime
+                        print("endtime",endtime)
                         targetpath = current_path + '/imgs/' + taskname + '.gif'
                         self.create_sub_gif(current_path + '/imgs/animation.gif', targetpath, starttime, endtime)
                         episode_paths.append(targetpath)
@@ -201,7 +201,7 @@ class NEEMDataGenerator(object):
             demos['demoX'] = np.array(demos['demoX'])
             path.append(episode_paths)
             traj.append(demos)
-        return path, traj 
+        return path, traj
 
     def sample_idx(self, batch_size, update_batch_size, test_batch_size):
         range_exp = range(len(self.allepisodes.traj))
@@ -214,9 +214,9 @@ class NEEMDataGenerator(object):
             sampled_subepisodes = random.sample(subrange_exp, update_batch_size + test_batch_size)
             for ind in sampled_subepisodes:
                 samples.append([idx,ind])
-                paths.append(self.allepisodes.paths[idx][ind])        
+                paths.append(self.allepisodes.paths[idx][ind])
         return samples, paths
-               
+
     #def idx_to_folder_path (self, idx, experiment_folders, subfolder_lengths):
         #count = 0
         #path = ""
@@ -231,13 +231,13 @@ class NEEMDataGenerator(object):
         #self.testingepisodes = FLAGS.testingepisodes
 
         #experiment_testing_files = FLAGS.experiment_testing_files
-        
+
         #self.extract_txts(experiment_testing_files)
 
         #experiment_testing_files = natsorted(glob.glob(experiment_testing_files + '/*txt'))
 
-        #self.testing_dataset_size = len(experiment_testing_files)  
-         
+        #self.testing_dataset_size = len(experiment_testing_files)
+
         #self.extract_experiment_data(experiment_testing_files)
 
         #if FLAGS.train:
@@ -255,10 +255,10 @@ class NEEMDataGenerator(object):
 
             #self.training_dataset_size = len(experiment_training_files)
             #self.validation_dataset_size = len(experiment_validation_files)
-            
+
             #self.extract_experiment_data(experiment_training_files)
             #self.extract_experiment_data(experiment_validation_files)
-       
+
 
     def extract_txt(self, txtdirectory):
         feature_file_exist = False
@@ -298,7 +298,7 @@ class NEEMDataGenerator(object):
 
     def make_batch_tensor(self, network_config, train=True):
         batch_image_size = (self.number_of_shot + self.test_batch_size) * self.meta_batch_size
-       
+
         im_height = network_config['image_height']
         im_width = network_config['image_width']
         num_channels = network_config['image_channels']
@@ -351,7 +351,7 @@ class NEEMDataGenerator(object):
         batch_size = self.meta_batch_size
         update_batch_size = self.number_of_shot
         test_batch_size = self.test_batch_size
-        
+
         demo_size = len(indices)
         U = []
         X = []
@@ -384,7 +384,7 @@ class NEEMDataGenerator(object):
 
         U = np.array(U)
         X = np.array(X)
-        
+
         U = U.reshape(batch_size, (test_batch_size+update_batch_size)*self.T, -1)
         X = X.reshape(batch_size, (test_batch_size+update_batch_size)*self.T, -1)
 

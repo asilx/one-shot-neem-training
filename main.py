@@ -294,6 +294,7 @@ def main():
 
     if FLAGS.train:
         with graph.as_default():
+            print "initializing network"
             train_image_tensors = data_generator.make_batch_tensor(network_config)
             inputa = train_image_tensors[:, :FLAGS.number_of_shot*FLAGS.TimeFrame, :]
             inputb = train_image_tensors[:, FLAGS.number_of_shot*FLAGS.TimeFrame:, :]
@@ -325,6 +326,7 @@ def main():
             with graph.as_default():
                 saver.restore(sess, model_file)
     if FLAGS.train:
+        print "start training the network"
         train(graph, model, saver, sess, data_generator, log_dir)
     else:
         load_one_shot_data_from_path(data_generator, network_config)

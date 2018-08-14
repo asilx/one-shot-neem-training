@@ -270,7 +270,7 @@ def main():
     random.seed(FLAGS.random_seed)
 
     graph = tf.Graph()
-    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=FLAGS.gpu_memory_fraction)
+    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=FLAGS.gpu_memory_fraction, visible_device_list='0')
     tf_config = tf.ConfigProto(gpu_options=gpu_options)
     sess = tf.Session(graph=graph, config=tf_config)
     network_config = {

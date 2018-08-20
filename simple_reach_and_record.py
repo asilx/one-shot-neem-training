@@ -1,13 +1,17 @@
 import math
+import imageio
 import json
+import numpy as np
 import rospy
 import tf2_geometry_msgs
 import tf
+import tf2_ros
 
 from tf import TransformListener
 from robosherlock_msgs.srv import RSQueryService
 from geometry_msgs.msg import PoseStamped
 from geometry_msgs.msg import Twist
+import geometry_msgs.msg
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
 import cv2
@@ -15,18 +19,16 @@ import cv2
 import sys
 import hsrb_interface
 from hsrb_interface import geometry
+from hsrb_interface import exceptions
 
 from tensorflow.python.platform import flags
 
 FLAGS = flags.FLAGS
-cv2_img = ''
-bridge = CvBridge()
-heart_a_message = False
 
 flags.DEFINE_string('map_frame', 'map', '')
 flags.DEFINE_string('base_frame', 'base_link', '')
 flags.DEFINE_string('sensor_frame', 'map', '')
-flags.DEFINE_string('end_effector_frame', 'head_rgbd_sensor_rgb_frame', '')
+flags.DEFINE_string('end_effector_frame', 'hand_palm_link', '')
 
 flags.DEFINE_string('rs_service', '/RoboSherlock_asil/query', '')
 flags.DEFINE_string('image_topic', '/hsrb/head_rgbd_sensor/rgb/image_raw', '')
@@ -51,62 +53,78 @@ class SimpleReachinRecordin(object):
     
     def detect(self, query='{\"detect\":{\"color\":\"yellow\"}}'):
         try:
-            print 'here1'
             res = self.detector(query)
-            print 'here2'
         except rospy.ServiceException, e:
             print "Service call failed: %s"%e
-        if len(res.answer) != 1:
-            raise ValueError('')
+        #if len(res.answer) != 1:
+        #    raise ValueError('more than one perceived objects that fit with the descriptor')
         sol = res.answer[0]
         object_info = json.loads(sol)
         goal = PoseStamped()
-        goal.header.frame_id = object_info['header']['frame_id']
-        goal.header.stamp = rospy.Time.now()
-        goal.pose.position.x = object_info['pose']['position']['x']
-        goal.pose.position.y = object_info['pose']['position']['y']
-        goal.pose.position.z = object_info['pose']['position']['z']
-        goal.pose.orientation.w = object_info['pose']['orientation']['w']
-        goal.pose.orientation.x = object_info['pose']['orientation']['x']
-        goal.pose.orientation.y = object_info['pose']['orientation']['y']
-        goal.pose.orientation.z = object_info['pose']['orientation']['z']
+        goal.header.frame_id = object_info['boundingbox']['pose']['header']['frame_id']
+        goal.header.stamp = rospy.Time.now() - rospy.Duration(0.1)
+        goal.pose.position.x = object_info['boundingbox']['pose']['pose']['position']['x']
+        goal.pose.position.y = object_info['boundingbox']['pose']['pose']['position']['y']
+        goal.pose.position.z = object_info['boundingbox']['pose']['pose']['position']['z']
+        goal.pose.orientation.w = object_info['boundingbox']['pose']['pose']['orientation']['w']
+        goal.pose.orientation.x = object_info['boundingbox']['pose']['pose']['orientation']['x']
+        goal.pose.orientation.y = object_info['boundingbox']['pose']['pose']['orientation']['y']
+        goal.pose.orientation.z = object_info['boundingbox']['pose']['pose']['orientation']['z']
 
         self.tf_env.waitForTransform(self.end_effector_frame, self.map_frame, rospy.Time(0),rospy.Duration(4.0))
-        goal_reference = self.tf_env.transformPoint("map", goal)
+        goal_reference = self.tf_env.transformPose("map", goal)
         return goal_reference
 
-    def image_callback(msg):
-        print("Received an image!")
+    def return_observation(self, image_topic, end_effector_frame, object_pose):
+        br = tf2_ros.StaticTransformBroadcaster()
+        static_transformStamped = geometry_msgs.msg.TransformStamped()
+  
+        static_transformStamped.header.stamp = rospy.Time(0)
+        static_transformStamped.header.frame_id = "map"
+        static_transformStamped.child_frame_id = "obj_of_interest"
+  
+        static_transformStamped.transform.translation.x = object_pose.pose.position.x
+        static_transformStamped.transform.translation.y = object_pose.pose.position.y
+        static_transformStamped.transform.translation.z = object_pose.pose.position.z
+  
+        static_transformStamped.transform.rotation.x = object_pose.pose.orientation.w
+        static_transformStamped.transform.rotation.y = object_pose.pose.orientation.x
+        static_transformStamped.transform.rotation.z = object_pose.pose.orientation.y
+        static_transformStamped.transform.rotation.w = object_pose.pose.orientation.z
+ 
+        br.sendTransform(static_transformStamped)
+        #br.sendTransform((object_pose.pose.position.x, object_pose.pose.position.y, object_pose.pose.position.z),  (object_pose.pose.orientation.w, object_pose.pose.orientation.x, object_pose.pose.orientation.y, object_pose.pose.orientation.z), rospy.Time.now(), "obj_of_interest", "map")
+        rospy.sleep(2)
+        pos, rot= self.tf_env.lookupTransform(end_effector_frame, "obj_of_interest", rospy.Time.now() - rospy.Duration(0.1))
+        #pos_ex, rot_ex= self.tf_env.lookupTransform(end_effector_frame, "obj_of_interest", rospy.Time.now() - rospy.Duration(0.1)) 
+        #t = tf.Transformer(True, rospy.Duration(10.0))
+        pos_speed, rot_euler = self.tf_env.lookupTwist(end_effector_frame, "obj_of_interest", rospy.Time.now() - rospy.Duration(0.1), rospy.Duration(0.1))
+        quaternion_speed = tf.transformations.quaternion_from_euler(rot_euler[0], rot_euler[1], rot_euler[0])
+        image_msg = rospy.wait_for_message(image_topic, Image, 3)
+        bridge = CvBridge()
         try:
             # Convert your ROS Image message to OpenCV2
-            heart_a_message = true
-            cv2_img = bridge.imgmsg_to_cv2(msg, "bgr8")
+            cv2_img = bridge.imgmsg_to_cv2(image_msg , "bgr8")
         except CvBridgeError, e:
             print(e)
+        else:
+            cv2_img = cv2.resize(cv2_img, (FLAGS.im_width, FLAGS.im_height)) 
+            path = FLAGS.neems + 'real_data/now.jpg'
+            cv2.imwrite(path, cv2_img)
+       
+        O = np.array(cv2_img)[:, :, :3]
+        O = np.transpose(O, [2, 1, 0]) # transpose to mujoco setting for images
+        O = O.reshape(1, -1) / 255.0 # normalize
 
-    def return_observation(self, image_topic, end_effector_frame, object_pose):
-        br = tf.TransformBroadcaster()
-        br.sendTransform()
-        br.sendTransform((object_pose.pose.position.x, object_pose.pose.position.y, object_pose.pose.position.z), 
-            (object_pose.pose.orientation.w, object_pose.pose.orientation.x, object_pose.pose.orientation.y, object_pose.pose.orientation.z), rospy.Time.now(), "obj_of_interest", "map")
-        pos, rot= self.tf_env.lookupTransform(end_effector_frame, "obj_of_interest", rospy.Time(0))
-        t = tf.Transformer(True, rospy.Duration(10.0))
-        pos_speed, rot_euler = t.lookupTwist(end_effector_frame, "obj_of_interest", rospy.Time.now(), rospy.Duration(5))
-        quaternion_speed = tf.transformations.quaternion_from_euler(rot_euler[0], rot_euler[1], rot_euler[0])
-        sub_image = rospy.Subscriber(image_topic, Image, image_callback)
-        while not heart_a_message:
-           wait = true
-        sub_image.unregister()
-        heart_a_message = false
-        cv2.resize(cv2_img, (FLAGS.im_width, FLAGS.im_height)) 
-        path = FLAG.neems + '/real_data/now.jpg'
-        cv2.imwrite(path, cv2_img)
-        return cv2_img, pos+rot, pos_speed+quaternion_speed
+        pos.extend(rot)
+        pos_speed = list(pos_speed)
+        pos_speed.extend(list(quaternion_speed)) 
+        return cv2_img, pos,pos_speed 
 
     def reach(self, target_pose):
          # self.whole_body.move_to_neutral()  # disabled for performance
         self.gripper.set_distance(0.1)
-        rospy.loginfo("moving to %s" % target_pose.pose.position)
+        rospy.loginfo("moving to %s" % target_pose)
         gripper_offset = 0.06
         ek_offset = 0.0
         pregrasp_offset = 0.06
@@ -116,19 +134,19 @@ class SimpleReachinRecordin(object):
         # self.whole_body.looking_hand_constraint = True  # disabled for performance
 
         target_cds = {
-            "x": target_pose.pose.position.x,
-            "y": target_pose.pose.position.y,
-            "z": target_pose.pose.position.z + gripper_offset,
+            "x": target_pose[0][0][0],
+            "y": target_pose[0][0][1],
+            "z": target_pose[0][0][2] + gripper_offset,
             "ei": math.pi,
             "ek": ek_offset,
         }
         moved = False
-        print rospy.Time.now()
+        print rospy.Time.now()  - rospy.Duration(0.1)
         try:
             self.whole_body.move_end_effector_pose(
                 geometry.pose(**target_cds),
-                ref_frame_id=target_pose.header.frame_id)
-            print rospy.Time.now()
+                ref_frame_id="obj_of_interest")
+            print rospy.Time.now()  - rospy.Duration(0.1)
             moved = True
         except exceptions.MotionPlanningError as e:
             rospy.logerr(e)
@@ -152,7 +170,7 @@ class SimpleReachinRecordin(object):
                 self.whole_body.move_end_effector_pose(
                     pose=geometry.pose(z=pregrasp_offset),
                     ref_frame_id=self.end_effector_frame)
-                print rospy.Time.now()
+                print rospy.Time.now()  - rospy.Duration(0.1)
                 moved = True
             except exceptions.MotionPlanningError as e:
                     rospy.logerr(e)
@@ -166,7 +184,7 @@ class SimpleReachinRecordin(object):
                 self.whole_body.move_end_effector_pose(
                     geometry.pose(**target_cds),
                     ref_frame_id=target_pose.header.frame_id)
-                print rospy.Time.now()
+                print rospy.Time.now()  - rospy.Duration(0.1)
                 moved = True
             except exceptions.MotionPlanningError as e:
                 rospy.logerr(e)
@@ -190,3 +208,4 @@ if __name__ == "__main__":
     rospy.init_node('simple_reach_and_record')
     rospy.sleep(5.0)
     main()
+    rospy.spin()

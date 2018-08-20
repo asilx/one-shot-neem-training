@@ -156,10 +156,8 @@ class NEEMDataGenerator(object):
 
     def bring_episodes_to_memory(self, folders):
         range_exp = len(folders)
-
         path = []
         traj = []
-
         for idx in xrange(range_exp):
             experiment_subfolder = natsorted(glob.glob(folders[idx] + '/*'))
             subrange_exp = len(experiment_subfolder)
@@ -177,24 +175,27 @@ class NEEMDataGenerator(object):
                         demos['demoX'].append(current_samples['demoX'])
                         #current_samples['demoU'] = np.array(current_samples['demoU'])
                         #current_samples['demoX'] = np.array(current_samples['demoX'])
-                        retractinstance = PQ()
-                        retractinstance.prolog_query(self.retractquery)
-                        neem_path = FLAGS.neems + os.path.basename(current_path) + "/v0/log.owl"
-                        parseinstance = PQ()
-                        parseinstance.prolog_query(self.parsequery % neem_path)
-                        timeinstance = PQ()
-                        taskname = os.path.basename(fname).replace('.txt', '')
-                        solutions = timeinstance.prolog_query(self.timequery % taskname)
-                        endtime = -1
-                        for s in solutions:
-                            for k, v in s.items():
-                                endtime = v
-                        starttime = endtime - 6
-                        endtime = endtime - 1
-                        print endtime
-                        targetpath = current_path + '/imgs/' + taskname + '.gif'
-                        self.create_sub_gif(current_path + '/imgs/animation.gif', targetpath, starttime, endtime)
-                        episode_paths.append(targetpath)
+                        if FLAGS.train:
+                            retractinstance = PQ()
+                            retractinstance.prolog_query(self.retractquery)
+                            neem_path = FLAGS.neems + os.path.basename(current_path) + "/v0/log.owl"
+                            parseinstance = PQ()
+                            parseinstance.prolog_query(self.parsequery % neem_path)
+                            timeinstance = PQ()
+                            taskname = os.path.basename(fname).replace('.txt', '')
+                            solutions = timeinstance.prolog_query(self.timequery % taskname)
+                            endtime = -1
+                            for s in solutions:
+                                for k, v in s.items():
+                                    endtime = v
+                            starttime = endtime - 6
+                            endtime = endtime - 1
+                            print endtime
+                            targetpath = current_path + '/imgs/' + taskname + '.gif'
+                            self.create_sub_gif(current_path + '/imgs/animation.gif', targetpath, starttime, endtime)
+                            episode_paths.append(targetpath)
+                        else:
+                            episode_paths.append(current_path + '/imgs/animation.gif')
                         #path.append(targetpath)
                         #traj.append(current_samples)
             demos['demoU'] = np.array(demos['demoU'])

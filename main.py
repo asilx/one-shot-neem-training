@@ -1,3 +1,8 @@
+import os
+import os.path
+import glob
+import pickle
+
 import numpy as np
 import random
 import tensorflow as tf
@@ -9,6 +14,7 @@ from neem_data_generator import NEEM, NEEMDataGenerator as DataGenerator
 from simple_reach_and_record import SimpleReachinRecordin as HSRBMover
 from mil import MIL
 from tensorflow.python.platform import flags
+from natsort import natsorted
 
 FLAGS = flags.FLAGS
 LOGGER = logging.getLogger(__name__)
@@ -45,7 +51,7 @@ flags.DEFINE_integer('final_eept_min', 6, 'first index of the final eept in the 
 flags.DEFINE_integer('final_eept_max', 8, 'last index of the final eept in the action array')
 flags.DEFINE_float('final_eept_loss_eps', 0.1, 'the coefficient of the auxiliary loss')
 flags.DEFINE_float('act_loss_eps', 1.0, 'the coefficient of the action loss')
-flags.DEFINE_float('loss_multiplier', 50.0, 'the constant multiplied with the loss value, 100 for reach and 50 for push')
+flags.DEFINE_float('loss_multiplier', 100.0, 'the constant multiplied with the loss value, 100 for reach and 50 for push')
 flags.DEFINE_bool('use_l1_l2_loss', False, 'use a loss with combination of l1 and l2')
 flags.DEFINE_float('l2_eps', 0.01, 'coeffcient of l2 loss')
 flags.DEFINE_bool('shuffle_val', False, 'whether to choose the validation set via shuffling or not')
@@ -64,13 +70,14 @@ flags.DEFINE_string('parsequery', 'owl_parse(\'%s\').', 'neem set in openease')
 flags.DEFINE_string('timequery', 'interval_start(\'http://knowrob.org/kb/unreal_log.owl#%s\', St).', 'neem set in openease')
 flags.DEFINE_string('neems', '/media/asil/Tuna/others/', 'neem set in openease')
 flags.DEFINE_string('local_model_path', '/media/asil/Tuna/low_res_data', 'neem set in openease')
+flags.DEFINE_string('robot_data', '/media/asil/Tuna/low_res_robot_data', 'neem set in openease')
 flags.DEFINE_integer('im_width', 216, 'width of the images in the demo videos,  125 for sim_push, and 80 for sim_vision_reach')
 flags.DEFINE_integer('im_height', 120, 'height of the images in the demo videos, 125 for sim_push, and 64 for sim_vision_reach')
 flags.DEFINE_integer('num_channels', 3, 'number of channels of the images in the demo videos')
 flags.DEFINE_integer('num_fc_layers', 3, 'number of fully-connected layers')
 flags.DEFINE_integer('layer_size', 100, 'hidden dimension of fully-connected layers')
-flags.DEFINE_bool('temporal_conv_2_head', False, 'whether or not to use temporal convolutions for the two-head architecture in video-only setting.')
-flags.DEFINE_bool('temporal_conv_2_head_ee', False, 'whether or not to use temporal convolutions for the two-head architecture in video-only setting for predicting the ee pose.')
+flags.DEFINE_bool('temporal_conv_2_head', True, 'whether or not to use temporal convolutions for the two-head architecture in video-only setting.')
+flags.DEFINE_bool('temporal_conv_2_head_ee', True, 'whether or not to use temporal convolutions for the two-head architecture in video-only setting for predicting the ee pose.')
 flags.DEFINE_integer('temporal_filter_size', 5, 'filter size for temporal convolution')
 flags.DEFINE_integer('temporal_num_filters', 64, 'number of filters for temporal convolution')
 flags.DEFINE_integer('temporal_num_filters_ee', 64, 'number of filters for temporal convolution for ee pose prediction')
@@ -95,9 +102,9 @@ flags.DEFINE_integer('num_conv_layers', 4, 'number of conv layers -- 5 for placi
 flags.DEFINE_integer('num_strides', 4, 'number of conv layers with strided filters -- 3 for placing, 4 for pushing, 3 for reaching.')
 flags.DEFINE_bool('conv', True, 'whether or not to use a convolutional network, only applicable in some cases')
 
-flags.DEFINE_bool('train', True, 'training or testing')
-flags.DEFINE_bool('resume', False, 'resume training if there is a model available')
-flags.DEFINE_integer('restore_iter', 0, 'iteration to load model (-1 for latest model)')
+flags.DEFINE_bool('train', False, 'training or testing')
+flags.DEFINE_bool('resume', True, 'resume training if there is a model available')
+flags.DEFINE_integer('restore_iter', 49999, 'iteration to load model (-1 for latest model)')
 
 def train(graph, model, saver, sess, data_generator, log_dir):
     """
@@ -163,18 +170,23 @@ def train(graph, model, saver, sess, data_generator, log_dir):
 
 
 def load_one_shot_data_from_path(folder_path, data_generator, network_config):
-    data_generator.alltestepisodes = data_generator.bring_episodes_to_memory(folder_path)
+    experiment_folder = natsorted(glob.glob(folder_path + '/*'))
+    data_generator.alltestepisodes = data_generator.bring_episodes_to_memory(experiment_folder)
+    print data_generator.alltestepisodes
     load_one_shot_data(data_generator, network_config)
 
 
 def load_one_shot_data(data_generator, network_config):
-    demos = data_generator.alltestepisodes.traj
+    demos = data_generator.alltestepisodes[1]
     #indices = data_generator.alltestepisodes.indices
-    paths = data_generator.alltestepisodes.paths
+    paths = data_generator.alltestepisodes[0]
+
+    selected_demoO, selected_demoX, selected_demoU = [], [], []
 
     Us = []
     Xs = []
     Os = []
+
     #all_filenames = []
     for i in xrange(FLAGS.number_of_shot):
         Us.append(demos[0]['demoU'][i])
@@ -182,7 +194,7 @@ def load_one_shot_data(data_generator, network_config):
 
         O = np.array(imageio.mimread(paths[0][i]))[:, :, :, :3]
         O = np.transpose(O, [0, 3, 2, 1]) # transpose to mujoco setting for images
-        O = O.reshape(FLAGS.T, -1) / 255.0 # normalize
+        O = O.reshape(FLAGS.TimeFrame, -1) / 255.0 # normalize
 
         Os.append(O)
 
@@ -249,7 +261,16 @@ def load_one_shot_data(data_generator, network_config):
     #    image = images[i*(FLAGS.number_of_shot_test):(i+1)*(FLAGS.number_of_shot_test)]
     #    image = tf.reshape(image, [(FLAGS.number_of_shot_test)*FLAGS.TimeFrame, -1])
     #    all_images.append(image)
-    selected_demo = dict(selected_demoX=X, selected_demoU=U, selected_demoO=Os, path=path)
+
+    selected_demoX =np.array(Xs)
+    selected_demoU =np.array(Us)
+    selected_demoO =np.array(Os)
+
+    selected_demoU = selected_demoU.reshape(1, 1, FLAGS.TimeFrame, -1)
+    selected_demoX= selected_demoX.reshape(1, 1, FLAGS.TimeFrame, -1)
+    selected_demoO = selected_demoO.reshape(1, 1, FLAGS.TimeFrame, -1)
+
+    selected_demo = dict(selected_demoX=selected_demoX, selected_demoU=selected_demoU, selected_demoO=selected_demoO, path=paths)
     data_generator.selected_demo = selected_demo
 
 
@@ -305,19 +326,17 @@ def main():
         tf.train.start_queue_runners(sess=sess)
     if FLAGS.resume:
         model_file = tf.train.latest_checkpoint(log_dir)
-        if FLAGS.restore_iter > 0:
-            model_file = model_file[:model_file.index('model')] + 'model_' + str(FLAGS.restore_iter)
+        print(model_file)
+        #if FLAGS.restore_iter > 0:
+        #    model_file = model_file[:model_file.index('model')] + 'model_' + str(FLAGS.restore_iter)
         if model_file:
-            ind1 = model_file.index('model')
-            resume_itr = int(model_file[ind1+6:])
-            print("Restoring model weights from " + model_file)
             with graph.as_default():
                 saver.restore(sess, model_file)
     if FLAGS.train:
         train(graph, model, saver, sess, data_generator, log_dir)
     else:
-        load_one_shot_data_from_path(data_generator, network_config)
-        control_robot(env, graph, model, data_generator, sess, exp_string, log_dir)
+        load_one_shot_data_from_path(FLAGS.robot_data, data_generator, network_config)
+        control_robot(graph, model, data_generator, sess, 'reach', log_dir)
 
 def load_scale_and_bias(data_path):
     with open(data_path, 'rb') as f:
@@ -326,12 +345,12 @@ def load_scale_and_bias(data_path):
         bias = data['bias']
     return scale, bias
 
-def control_robot(env, graph, model, data_generator, sess, exp_string, log_dir):
+def control_robot(graph, model, data_generator, sess, exp_string, log_dir):
     REACH_SUCCESS_THRESH = 0.05
     REACH_SUCCESS_TIME_RANGE = 10
-    robot = SimpleReachinRecordin()
+    robot = HSRBMover()
 
-    T = model.TimeFrame
+    T = model.T
     scale, bias = load_scale_and_bias('data/scale_and_bias_%s.pkl' % FLAGS.experiment)
     successes = []
     selected_demo = data_generator.selected_demo
@@ -339,21 +358,21 @@ def control_robot(env, graph, model, data_generator, sess, exp_string, log_dir):
         selected_demoO = selected_demo['selected_demoO'][i]
         selected_demoX = selected_demo['selected_demoX'][i]
         selected_demoU = selected_demo['selected_demoU'][i]
-        path = selected_demo['path'][i]
-        dists = []
-        # ob = env.reset()
-        # use env.set_state here to arrange blocks
-        Os = []
         obj = robot.detect()
         for t in range(T):
-            # import pdb; pdb.set_trace()
-            #env.render()
-            time.sleep(0.05)
+            rospy.sleep(0.05)
             obs, state, speed = robot.return_observation(FLAGS.image_topic, FLAGS.end_effector_frame, obj)
-            Os.append(obs)
             obs = np.transpose(obs, [2, 1, 0]) / 255.0
             obs = obs.reshape(1, 1, -1)
+            state[0] = np.array(state[0])
+            state[1] = np.array(state[1])
+            state = np.array(state)
             state = state.reshape(1, 1, -1)
+
+            print selected_demoX
+            print "---"
+            print state
+
             feed_dict = {
                 model.obsa: selected_demoO,
                 model.statea: selected_demoX.dot(scale) + bias,
@@ -362,6 +381,7 @@ def control_robot(env, graph, model, data_generator, sess, exp_string, log_dir):
                 model.stateb: state.dot(scale) + bias
              }
             with graph.as_default():
+                print model.test_act_op
                 action = sess.run(model.test_act_op, feed_dict=feed_dict)
             robot.reach(action)
             _, after_state, _ = robot.return_observation(FLAGS.image_topic, FLAGS.end_effector_frame, obj)

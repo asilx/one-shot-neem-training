@@ -344,16 +344,16 @@ class NEEMDataGenerator(object):
         return tf.stack(all_images)
 
     def generate_data_batch(self, itr, train=True):
-        demos = self.allepisodes.traj
-        if train:
-            indices = self.alltrainepisodes.indices[itr*(self.number_of_shot+self.test_batch_size):(itr+1)*(self.number_of_shot+self.test_batch_size)]
-        else:
-            indices = self.allvalidationepisodes.indices[itr*(self.number_of_shot+self.test_batch_size):(itr+1)*(self.number_of_shot+self.test_batch_size)]
-
 
         batch_size = self.meta_batch_size
         update_batch_size = self.number_of_shot
         test_batch_size = self.test_batch_size
+
+        demos = self.allepisodes.traj
+        if train:
+            indices = self.alltrainepisodes.indices[batch_size*itr*(self.number_of_shot+self.test_batch_size):batch_size*(itr+1)*(self.number_of_shot+self.test_batch_size)]
+        else:
+            indices = self.allvalidationepisodes.indices[itr*(self.number_of_shot+self.test_batch_size):(itr+1)*(self.number_of_shot+self.test_batch_size)]
 
         demo_size = len(indices)
         U = []

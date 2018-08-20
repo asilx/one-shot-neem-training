@@ -305,8 +305,8 @@ class MIL(object):
 								  [-1, num_rows*num_cols])
 			softmax = tf.nn.softmax(features)
 
-			fp_x = tf.reduce_sum(tf.multiply(x_map, softmax), [1], keep_dims=True)
-			fp_y = tf.reduce_sum(tf.multiply(y_map, softmax), [1], keep_dims=True)
+			fp_x = tf.reduce_sum(tf.multiply(x_map, softmax), [1], keepdims=True)
+			fp_y = tf.reduce_sum(tf.multiply(y_map, softmax), [1], keepdims=True)
 
 			conv_out_flat = tf.reshape(tf.concat(axis=1, values=[fp_x, fp_y]), [-1, num_fp*2])
 		else:

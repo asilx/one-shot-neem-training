@@ -300,7 +300,7 @@ def main():
     img_idx = range(len(state_idx), len(state_idx)+FLAGS.im_height*FLAGS.im_width*FLAGS.num_channels)
     model = MIL(data_generator._dU, state_idx=state_idx, img_idx=img_idx, network_config=network_config)
 
-    log_dir = FLAGS.local_model_path + '/../logged_model' 
+    log_dir = FLAGS.local_model_path + '/../logged_model'
 
     if FLAGS.train:
         with graph.as_default():

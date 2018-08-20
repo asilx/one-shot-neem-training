@@ -9,6 +9,11 @@ $ cd ~/catkin_ws/src/knowrob/json_prolog/src/json_prolog
 $ python2 main.py
 ```
 
+or just
+
+$ cd scripts
+$ bash run.sh
+
 ## Requirements
 
 - tensorflow==1.8.0

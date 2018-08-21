@@ -343,7 +343,7 @@ class NEEMDataGenerator(object):
         if train:
             indices = self.alltrainepisodes.indices[batch_size*itr*(self.number_of_shot+self.test_batch_size):batch_size*(itr+1)*(self.number_of_shot+self.test_batch_size)]
         else:
-            indices = self.allvalidationepisodes.indices[itr*(self.number_of_shot+self.test_batch_size):(itr+1)*(self.number_of_shot+self.test_batch_size)]
+            indices = self.allvalidationepisodes.indices[batch_size*itr*(self.number_of_shot+self.test_batch_size):batch_size*(itr+1)*(self.number_of_shot+self.test_batch_size)]
 
         demo_size = len(indices)
         U = []

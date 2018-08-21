@@ -469,9 +469,6 @@ class MIL(object):
             use_whole_traj = FLAGS.learn_final_eept_whole_traj
 
             num_updates = self.num_updates
-            lossesa, outputsa = [], []
-            lossesb = [[] for _ in xrange(num_updates)]
-            outputsb = [[] for _ in xrange(num_updates)]
 
             def batch_metalearn(inp):
                 inputa, inputb, actiona, actionb = inp

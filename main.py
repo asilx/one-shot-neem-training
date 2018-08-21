@@ -297,13 +297,15 @@ def main():
 
     if FLAGS.train:
         with graph.as_default():
-            train_image_tensors = data_generator.make_batch_tensor(network_config)
-            inputa = train_image_tensors[:, :FLAGS.number_of_shot*FLAGS.TimeFrame, :]
-            inputb = train_image_tensors[:, FLAGS.number_of_shot*FLAGS.TimeFrame:, :]
+            #  train_image_tensors = data_generator.make_batch_tensor(network_config)
+            #  inputa = train_image_tensors[:, :FLAGS.number_of_shot*FLAGS.TimeFrame, :]
+            #  inputb = train_image_tensors[:, FLAGS.number_of_shot*FLAGS.TimeFrame:, :]
+            inputa, inputb = data_generator.make_batch_tensor(network_config)
             train_input_tensors = {'inputa': inputa, 'inputb': inputb}
-            val_image_tensors = data_generator.make_batch_tensor(network_config, train=False)
-            inputa = val_image_tensors[:, :FLAGS.number_of_shot*FLAGS.TimeFrame, :]
-            inputb = val_image_tensors[:, FLAGS.number_of_shot*FLAGS.TimeFrame:, :]
+            #  val_image_tensors = data_generator.make_batch_tensor(network_config, train=False)
+            #  inputa = val_image_tensors[:, :FLAGS.number_of_shot*FLAGS.TimeFrame, :]
+            #  inputb = val_image_tensors[:, FLAGS.number_of_shot*FLAGS.TimeFrame:, :]
+            inputa, inputb = data_generator.make_batch_tensor(network_config)
             val_input_tensors = {'inputa': inputa, 'inputb': inputb}
         model.init_network(graph, input_tensors=train_input_tensors)
         model.init_network(graph, input_tensors=val_input_tensors, prefix='Validation_')

@@ -121,12 +121,7 @@ def train(graph, model, saver, sess, data_generator, log_dir):
     train_writer = tf.summary.FileWriter(log_dir, graph)
     training_range = range(TOTAL_ITERS)
     for itr in training_range:
-        state, tgt_mu = data_generator.generate_data_batch(itr)
-
-        statea = state[:, :FLAGS.number_of_shot*FLAGS.TimeFrame, :]
-        stateb = state[:, FLAGS.number_of_shot*FLAGS.TimeFrame:, :]
-        actiona = tgt_mu[:, :FLAGS.number_of_shot*FLAGS.TimeFrame, :]
-        actionb = tgt_mu[:, FLAGS.number_of_shot*FLAGS.TimeFrame:, :]
+        statea, actiona, stateb, actionb = data_generator.generate_data_batch(itr)
 
         feed_dict = {model.statea: statea,
                     model.stateb: stateb,
@@ -148,11 +143,8 @@ def train(graph, model, saver, sess, data_generator, log_dir):
         if itr != 0 and itr % TEST_PRINT_INTERVAL == 0:
             if FLAGS.val_set_size > 0:
                 input_tensors = [model.val_summ_op, model.val_total_loss1, model.val_total_losses2[model.num_updates-1]]
-                val_state, val_act = data_generator.generate_data_batch((itr / TEST_PRINT_INTERVAL)-1, train=False)
-                statea = val_state[:, :FLAGS.number_of_shot*FLAGS.TimeFrame, :]
-                stateb = val_state[:, FLAGS.number_of_shot*FLAGS.TimeFrame:, :]
-                actiona = val_act[:, :FLAGS.number_of_shot*FLAGS.TimeFrame, :]
-                actionb = val_act[:, FLAGS.number_of_shot*FLAGS.TimeFrame:, :]
+                statea, actiona, stateb, actoinb = data_generator.generate_data_batch((itr / TEST_PRINT_INTERVAL)-1, train=False)
+
                 feed_dict = {model.statea: statea,
                             model.stateb: stateb,
                             model.actiona: actiona,

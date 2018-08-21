@@ -122,8 +122,6 @@ def train(graph, model, saver, sess, data_generator, log_dir):
     for itr in training_range:
         state, tgt_mu = data_generator.generate_data_batch(itr)
 
-        print state.shape
-
         statea = state[:, :FLAGS.number_of_shot*FLAGS.TimeFrame, :]
         stateb = state[:, FLAGS.number_of_shot*FLAGS.TimeFrame:, :]
         actiona = tgt_mu[:, :FLAGS.number_of_shot*FLAGS.TimeFrame, :]

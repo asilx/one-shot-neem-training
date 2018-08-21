@@ -1,24 +1,14 @@
 """ Code for extracting data from NEEMs and batching them together with images. Developer: Asil Kaan Bozcuoglu """
 from __future__ import division
 import re
-import pandas as pd
 import os
-import rospy
 import readline
-import sys
-import rospy
-from json_prolog import PrologException, Prolog
 from json_prolog_commandline import PQ
 
-import copy
 import logging
-import os
 import os.path
 import glob
-import tempfile
 import pickle
-from datetime import datetime
-from collections import OrderedDict
 
 import numpy as np
 import math
@@ -165,7 +155,7 @@ class NEEMDataGenerator(object):
             subrange_exp = len(experiment_subfolder)
             episode_paths = []
             demos=dict([('demoX', []), ('demoU', [])])
-            for ind in xrange(subrange_exp):
+            for ind in xrange(subrange_exp): # Task-HCP-BPB-0
                 #current_path = folders[idx] + '/' + experiment_subfolder[ind]
                 current_path = experiment_subfolder[ind]
                 for fname in os.listdir(current_path):
@@ -345,9 +335,9 @@ class NEEMDataGenerator(object):
 
     def generate_data_batch(self, itr, train=True):
 
-        batch_size = self.meta_batch_size
-        update_batch_size = self.number_of_shot
-        test_batch_size = self.test_batch_size
+        batch_size = self.meta_batch_size                       # number of tasks sampled per meta-update
+        update_batch_size = self.number_of_shot                 # number of examples used for inner gradient update
+        test_batch_size = self.test_batch_size                  # number of examples used for gradient update during training
 
         demos = self.allepisodes.traj
         if train:

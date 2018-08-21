@@ -146,7 +146,7 @@ class NEEMDataGenerator(object):
         traj = []
         for idx in xrange(range_exp):
             experiment_subfolder = set(natsorted(glob.glob(folders[idx] + '/*')))
-            rb_experiment_subfolder = set(natsorted(glob.glob(folders[idx] + '/*-Robot-*')))
+            rb_experiment_subfolder = set(natsorted(glob.glob(folders[idx] + '/*-Robot*')))
             vr_experiment_subfolder = experiment_subfolder - rb_experiment_subfolder
 
             #  subrange_exp = len(experiment_subfolder)

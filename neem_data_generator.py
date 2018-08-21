@@ -386,7 +386,7 @@ class NEEMDataGenerator(object):
 
         vr_U = vr_U.reshape(batch_size, (update_batch_size)*self.T, -1)
         vr_X = vr_X.reshape(batch_size, (update_batch_size)*self.T, -1)
-        rb_U = rb_U.reshape(batch_size, (test_batch_sizee)*self.T, -1)
+        rb_U = rb_U.reshape(batch_size, (test_batch_size)*self.T, -1)
         rb_X = rb_X.reshape(batch_size, (test_batch_size)*self.T, -1)
 
         return vr_X, vr_U, rb_U, rb_X

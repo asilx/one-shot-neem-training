@@ -1,7 +1,6 @@
 import os
 import os.path
 import glob
-import pickle
 
 import numpy as np
 import random
@@ -15,6 +14,8 @@ from simple_reach_and_record import SimpleReachinRecordin as HSRBMover
 from mil import MIL
 from tensorflow.python.platform import flags
 from natsort import natsorted
+
+from utils import load_scale_and_bias
 
 FLAGS = flags.FLAGS
 LOGGER = logging.getLogger(__name__)
@@ -339,12 +340,6 @@ def main():
         load_one_shot_data_from_path(robo_data_path, data_generator, network_config)
         control_robot(graph, model, data_generator, sess, 'reach', log_dir)
 
-def load_scale_and_bias(data_path):
-    with open(data_path, 'rb') as f:
-        data = pickle.load(f)
-        scale = data['scale']
-        bias = data['bias']
-    return scale, bias
 
 def control_robot(graph, model, data_generator, sess, exp_string, log_dir):
     REACH_SUCCESS_THRESH = 0.05

@@ -147,15 +147,14 @@ class NEEMDataGenerator(object):
         for idx in xrange(range_exp):
             experiment_subfolder = set(natsorted(glob.glob(folders[idx] + '/*')))
             rb_experiment_subfolder = set(natsorted(glob.glob(folders[idx] + '/*-Robot*')))
-            vr_experiment_subfolder = experiment_subfolder - rb_experiment_subfolder
+            vr_experiment_subfolder = list(experiment_subfolder - rb_experiment_subfolder)
+            rb_experiment_subfolder = list(rb_experiment_subfolder)
 
             #  subrange_exp = len(experiment_subfolder)
             vr_subrange_exp = len(vr_experiment_subfolder)
             rb_subrange_exp = len(rb_experiment_subfolder)
 
-            #  episode_paths = []
-            vr_episode_paths = []
-            rb_episode_paths = []
+            episode_paths = []
             demos=dict([('demoX', []), ('demoU', [])])
 
             # for vr only

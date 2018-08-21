@@ -11,8 +11,17 @@ $ python2 main.py
 
 or just
 
+```bash
 $ cd scripts
 $ bash run.sh
+```
+
+and then 
+```bash
+$ bash learn_reach.sh
+```
+
+on another terminal
 
 ## Requirements
 

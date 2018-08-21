@@ -32,11 +32,10 @@ class MIL(object):
     def init_network(self, graph, input_tensors=None, restore_iter=0, prefix='Training_'):
         """ Helper method to initialize the tf networks used """
         with graph.as_default():
-
             with Timer('building TF network'):
                 result = self.construct_model(input_tensors=input_tensors, prefix=prefix, dim_input=self._dO, dim_output=self._dU,
                                           network_config=self.network_params)
-                        outputas, outputbs, test_output, lossesa, lossesb, final_eept_lossesb, flat_img_inputb, gradients = result
+            outputas, outputbs, test_output, lossesa, lossesb, final_eept_lossesb, flat_img_inputb, gradients = result
             if 'Testing' in prefix:
                 self.obs_tensor = self.obsa
                 self.state_tensor = self.statea
@@ -47,7 +46,8 @@ class MIL(object):
             total_loss1 = tf.reduce_sum(lossesa) / tf.to_float(self.meta_batch_size)
             total_losses2 = [tf.reduce_sum(lossesb[j]) / tf.to_float(self.meta_batch_size) for j in range(self.num_updates)]
             total_final_eept_losses2 = [tf.reduce_sum(final_eept_lossesb[j]) / tf.to_float(self.meta_batch_size) for j in range(self.num_updates)]
-                        if 'Training' in prefix:
+
+            if 'Training' in prefix:
                 self.total_loss1 = total_loss1
                 self.total_losses2 = total_losses2
                 self.total_final_eept_losses2 = total_final_eept_losses2
@@ -73,7 +73,6 @@ class MIL(object):
                     summ.append(tf.summary.scalar(prefix + 'Post-update_loss_step_%d' % j, self.val_total_losses2[j]))
                     summ.append(tf.summary.scalar(prefix + 'Post-update_final_eept_loss_step_%d' % j, self.val_total_final_eept_losses2[j]))
                 self.val_summ_op = tf.summary.merge(summ)
-
 
     def construct_image_input(self, nn_input, state_idx, img_idx, network_config=None):
         """ Preprocess images. """
@@ -106,13 +105,13 @@ class MIL(object):
         im_width = network_config['image_width']
         num_channels = network_config['image_channels']
         is_dilated = network_config.get('is_dilated', False)
-        use_fp = FLAGS.fp
+        use_fp = FLAGS.fp                                                       # use spatial soft-argmax or not
         pretrain = FLAGS.pretrain_weight_path != 'N/A'
         train_pretrain_conv1 = FLAGS.train_pretrain_conv1
         initialization = network_config.get('initialization', 'random')
         if pretrain:
             num_filters[0] = 64
-        pretrain_weight_path = FLAGS.pretrain_weight_path
+        pretrain_weight_path = FLAGS.pretrain_weight_path                       # path to pretrained weights
         n_conv_layers = len(num_filters)
         downsample_factor = 1
         for stride in strides:
@@ -124,9 +123,8 @@ class MIL(object):
 
         # conv weights
         fan_in = num_channels
-        if FLAGS.conv_bt:
+        if FLAGS.conv_bt:  # use bias transformation for the first conv layer, N/A for using pretraining
             fan_in += num_channels
-        if FLAGS.conv_bt:
             weights['img_context'] = safe_get('img_context', initializer=tf.zeros([im_height, im_width, num_channels], dtype=tf.float32))
             weights['img_context'] = tf.clip_by_value(weights['img_context'], 0., 1.)
         for i in xrange(n_conv_layers):
@@ -157,7 +155,7 @@ class MIL(object):
 
         # fc weights
         in_shape = self.conv_out_size
-        if not FLAGS.no_state:
+        if not FLAGS.no_state:  # do not include states in the demonstrations during training
             in_shape += len(self.state_idx)
         if FLAGS.learn_final_eept:
             final_eept_range = range(FLAGS.final_eept_min, FLAGS.final_eept_max)
@@ -246,6 +244,7 @@ class MIL(object):
 
     def forward(self, image_input, state_input, weights, meta_testing=False, is_training=True, testing=False, network_config=None):
         """ Perform the forward pass. """
+        # use bias transformation for the first fc layer
         if FLAGS.fc_bt:
             im_height = network_config['image_height']
             im_width = network_config['image_width']
@@ -280,6 +279,7 @@ class MIL(object):
             else:
                 conv_layer = dropout(norm(conv2d(img=conv_layer, w=weights['wc%d' % (i+1)], b=weights['bc%d' % (i+1)], strides=strides[i], is_dilated=is_dilated), \
                                 norm_type=norm_type, decay=decay, id=i, is_training=is_training, activation_fn=self.activation_fn), keep_prob=prob, is_training=is_training, name='dropout_%d' % (i+1))
+
         if FLAGS.fp:
             _, num_rows, num_cols, num_fp = conv_layer.get_shape()
             if is_dilated:
@@ -463,9 +463,9 @@ class MIL(object):
                 weights = self.weights
 
             self.step_size = FLAGS.train_update_lr
-            loss_multiplier = FLAGS.loss_multiplier
-            final_eept_loss_eps = FLAGS.final_eept_loss_eps
-            act_loss_eps = FLAGS.act_loss_eps
+            loss_multiplier = FLAGS.loss_multiplier                     # constant multiplied with the loss value
+            final_eept_loss_eps = FLAGS.final_eept_loss_eps             # the coefficient of the auxiliary loss
+            act_loss_eps = FLAGS.act_loss_eps                           # the coefficient of the action loss
             use_whole_traj = FLAGS.learn_final_eept_whole_traj
 
             num_updates = self.num_updates
@@ -511,10 +511,8 @@ class MIL(object):
                     final_eeptas = [final_eepta]*num_updates
 
                 # Pre-update
-                if 'Training' in prefix:
-                    local_outputa, final_eept_preda = self.forward(inputa, state_inputa, weights, network_config=network_config)
-                else:
-                    local_outputa, final_eept_preda = self.forward(inputa, state_inputa, weights, is_training=False, network_config=network_config)
+                is_training = 'Training' in prefix
+                local_outputa, final_eept_preda = self.forward(inputa, state_inputa, weights, is_training=is_training, network_config=network_config)
                 if FLAGS.learn_final_eept:
                     final_eept_lossa = euclidean_loss_layer(final_eept_preda, final_eepta, multiplier=loss_multiplier, use_l1=FLAGS.use_l1_l2_loss)
                 else:
@@ -626,7 +624,7 @@ class MIL(object):
 
         if self.norm_type:
             # initialize batch norm vars.
-            unused = batch_metalearn((inputa[0], inputb[0], actiona[0], actionb[0]))
+            _ = batch_metalearn((inputa[0], inputb[0], actiona[0], actionb[0]))
 
         out_dtype = [tf.float32, [tf.float32]*num_updates, tf.float32, tf.float32, [tf.float32]*num_updates, [tf.float32]*num_updates, tf.float32, [[tf.float32]*len(self.weights.keys())]*num_updates]
         result = tf.map_fn(batch_metalearn, elems=(inputa, inputb, actiona, actionb), dtype=out_dtype)

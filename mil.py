@@ -446,7 +446,7 @@ class MIL(object):
             actiona = self.actiona
             actionb = self.actionb
 
-                inputa = tf.concat(axis=2, values=[statea, obsa])
+        inputa = tf.concat(axis=2, values=[statea, obsa])
         inputb = tf.concat(axis=2, values=[stateb, obsb])
 
         with tf.variable_scope('model', reuse=None) as training_scope:

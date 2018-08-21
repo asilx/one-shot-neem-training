@@ -44,9 +44,6 @@ class NEEMDataGenerator(object):
         self.meta_batch_size = FLAGS.meta_batch_size
         self.T = FLAGS.TimeFrame
 
-        #self.image_data_dir = FLAGS.image_data_dir if FLAGS.image_data_dir is not None else FLAGS.experiment_dir
-        #self.image_data_prefix = FLAGS.image_data_prefix
-
         self.total_iters = FLAGS.metatrain_iterations
         TEST_PRINT_INTERVAL = 500
 
@@ -54,9 +51,8 @@ class NEEMDataGenerator(object):
         self.scale, self.bias = None, None
 
         # NEEMs related
-        self.neems = FLAGS.neems
-        self.local_model_path = FLAGS.local_model_path
-
+        self.neems = os.path.join( FLAGS.data_path, 'others')
+        self.path2vrdemo = os.path.join( FLAGS.data_path, 'low_res_data')
 
         self.prologquery = FLAGS.featurizequery
         self.initquery = FLAGS.initquery
@@ -67,18 +63,8 @@ class NEEMDataGenerator(object):
         prologinstance = PQ()
         prologinstance.prolog_query(self.initquery)
 
-        #experiment_folders = FLAGS.experiment_path
-        experiment_folders = natsorted(glob.glob(self.local_model_path + '/*'))
+        experiment_folders = natsorted(glob.glob(self.path2vrdemo + '/*'))
         experiment_subfolder_lengths = []
-
-        #total_subfolder_length = 0
-
-        #for itr in len(experiment_folders):
-        #    experiment_subfolder = natsorted(glob.glob(experiment_folders[itr] + '/*'))
-        #    total_subfolder_length = total_subfolder_length + len(experiment_subfolder)
-        #    experiment_subfolder_lengths.append(total_subfolder_length)
-
-        #range_exp = range(0, len(experiment_folders))
 
         self.allepisodes = NEEM()
 
@@ -210,49 +196,6 @@ class NEEMDataGenerator(object):
                 paths.append(self.allepisodes.paths[idx][ind])
         return samples, paths
 
-    #def idx_to_folder_path (self, idx, experiment_folders, subfolder_lengths):
-        #count = 0
-        #path = ""
-        #for sf in esubfolder_lengths:
-        #    if idx < sf:
-        #        episode_number =  idx - subfolder_lengths[count]
-        #        path = experiment_folders[itr] + '/episode' + episode_number
-        #        break
-        #    else count = count + 1
-        #return path
-
-        #self.testingepisodes = FLAGS.testingepisodes
-
-        #experiment_testing_files = FLAGS.experiment_testing_files
-
-        #self.extract_txts(experiment_testing_files)
-
-        #experiment_testing_files = natsorted(glob.glob(experiment_testing_files + '/*txt'))
-
-        #self.testing_dataset_size = len(experiment_testing_files)
-
-        #self.extract_experiment_data(experiment_testing_files)
-
-        #if FLAGS.train:
-            #self.trainepisodes = FLAGS.trainepisodes
-            #self.validationepisodes = FLAGS.validationepisodes
-
-            #experiment_training_files = FLAGS.experiment_training_files
-            #experiment_validation_files = FLAGS.experiment_validation_files
-
-            #self.extract_txts(experiment_training_files)
-            #self.extract_txts(experiment_validation_files)
-
-            #experiment_training_files = natsorted(glob.glob(experiment_training_files + '/*txt'))
-            #experiment_validation_files = natsorted(glob.glob(experiment_validation_files + '/*txt'))
-
-            #self.training_dataset_size = len(experiment_training_files)
-            #self.validation_dataset_size = len(experiment_validation_files)
-
-            #self.extract_experiment_data(experiment_training_files)
-            #self.extract_experiment_data(experiment_validation_files)
-
-
     def extract_txt(self, txtdirectory):
         feature_file_exist = False
         for fname in os.listdir(txtdirectory):
@@ -352,28 +295,6 @@ class NEEMDataGenerator(object):
         for i in xrange(demo_size):
             U.append(demos[indices[i][0]]['demoU'][indices[i][1]])
             X.append(demos[indices[i][0]]['demoX'][indices[i][1]])
-
-        #for i in xrange(demo_size):
-        #    pose_size = len(demos[i].pose)
-        #    velocity_size = len(demos[i].velocity)
-
-        #    for j in xrange(0, pose_size, (test_batch_size+update_batch_size)*self.T):
-        #        pose = []
-        #        for k in xrange((test_batch_size+update_batch_size)*self.T):
-        #            pose = demos[i]['demoX'][j+k]
-        #        X.append(pose)
-
-        #    for j in xrange(0, velocity_size, (test_batch_size+update_batch_size)*self.T)
-        #        velocity = []
-        #        for k in xrange((test_batch_size+update_batch_size)*self.T):
-        #            velocity = demos[i]['demoU'][j+k]
-                    #velocity.append(demos[i].velocity[j+k].y)
-                    #velocity.append(demos[i].velocity[j+k].z)
-                    #velocity.append(demos[i].velocity[j+k].qw)
-                    #velocity.append(demos[i].velocity[j+k].qx)
-                    #velocity.append(demos[i].velocity[j+k].qy)
-                    #velocity.append(demos[i].velocity[j+k].qz)
-        #        U.append(velocity)
 
         U = np.array(U)
         X = np.array(X)

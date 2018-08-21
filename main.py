@@ -68,9 +68,9 @@ flags.DEFINE_string('initquery', 'register_ros_package(\'knowrob_openease\').', 
 flags.DEFINE_string('retractquery', 'rdf_retractall(A, B, C).', 'neem set in openease')
 flags.DEFINE_string('parsequery', 'owl_parse(\'%s\').', 'neem set in openease')
 flags.DEFINE_string('timequery', 'interval_start(\'http://knowrob.org/kb/unreal_log.owl#%s\', St).', 'neem set in openease')
-flags.DEFINE_string('neems', '/media/asil/Tuna/others/', 'neem set in openease')
-flags.DEFINE_string('local_model_path', '/media/asil/Tuna/low_res_data', 'neem set in openease')
-flags.DEFINE_string('robot_data', '/media/asil/Tuna/low_res_robot_data', 'neem set in openease')
+
+flags.DEFINE_string('data_path', 'path/to/data/', 'path to parent direcotry of others, low_res_data, low_res_robot_data')
+
 flags.DEFINE_integer('im_width', 216, 'width of the images in the demo videos,  125 for sim_push, and 80 for sim_vision_reach')
 flags.DEFINE_integer('im_height', 120, 'height of the images in the demo videos, 125 for sim_push, and 64 for sim_vision_reach')
 flags.DEFINE_integer('num_channels', 3, 'number of channels of the images in the demo videos')
@@ -278,8 +278,10 @@ def main():
     random.seed(FLAGS.random_seed)
 
     graph = tf.Graph()
-    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=FLAGS.gpu_memory_fraction)
-    tf_config = tf.ConfigProto(gpu_options=gpu_options)
+    #  gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=FLAGS.gpu_memory_fraction)
+    #  tf_config = tf.ConfigProto(gpu_options=gpu_options)
+    tf_config = tf.ConfigProto()
+    tf_config.gpu_options.allow_growth = True
     sess = tf.Session(graph=graph, config=tf_config)
     network_config = {
         'num_filters': [FLAGS.num_filters]*FLAGS.num_conv_layers,
@@ -333,7 +335,8 @@ def main():
     if FLAGS.train:
         train(graph, model, saver, sess, data_generator, log_dir)
     else:
-        load_one_shot_data_from_path(FLAGS.robot_data, data_generator, network_config)
+        robot_data_path = os.path.join( FLAGS.data_path, 'low_res_robot_data')
+        load_one_shot_data_from_path(robo_data_path, data_generator, network_config)
         control_robot(graph, model, data_generator, sess, 'reach', log_dir)
 
 def load_scale_and_bias(data_path):

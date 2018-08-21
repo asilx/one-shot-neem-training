@@ -156,7 +156,7 @@ class NEEMDataGenerator(object):
                         if FLAGS.train:
                             retractinstance = PQ()
                             retractinstance.prolog_query(self.retractquery)
-                            neem_path = os.path.join(FLAGS.neems, os.path.basename(current_path), 'v0/log.owl')
+                            neem_path = os.path.join(self.neems, os.path.basename(current_path), 'v0/log.owl')
                             parseinstance = PQ()
                             parseinstance.prolog_query(self.parsequery % neem_path)
                             timeinstance = PQ()

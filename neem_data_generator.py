@@ -75,28 +75,28 @@ class NEEMDataGenerator(object):
         demos = self.allepisodes.traj
         self.state_idx = range(demos[0]['demoX'].shape[-1])
         self._dU = demos[0]['demoU'].shape[-1]
-        if FLAGS.train:
-            # Normalize the states if it's training.
-            with Timer('Normalizing states'):
-                if self.scale is None or self.bias is None:
-                    #for i in xrange(len(demos)):
-                    #    print len(demos[i]['demoX'])
-                    #    print self.allepisodes.path[i]
-                    states = np.vstack((demos[i]['demoX'] for i in xrange(len(demos)))) # hardcoded here to solve the memory issue
-                    states = states.reshape(-1, len(self.state_idx))
-                    # 1e-3 to avoid infs if some state dimensions don't change in the
-                    # first batch of samples
-                    self.scale = np.diag(
-                        1.0 / np.maximum(np.std(states, axis=0), 1e-3))
-                    self.bias = - np.mean(
-                        states.dot(self.scale), axis=0)
-                    # Save the scale and bias.
-                    with open('data/scale_and_bias_%s.pkl' % FLAGS.experiment, 'wb') as f:
-                        pickle.dump({'scale': self.scale, 'bias': self.bias}, f)
-                for key in xrange(len(demos)):
-                    self.allepisodes.traj[key]['demoX'] = demos[key]['demoX'].reshape(-1, len(self.state_idx))
-                    self.allepisodes.traj[key]['demoX'] = demos[key]['demoX'].dot(self.scale) + self.bias
-                    self.allepisodes.traj[key]['demoX'] = demos[key]['demoX'].reshape(-1, self.T, len(self.state_idx))
+        #  if FLAGS.train:
+            #  # Normalize the states if it's training.
+            #  with Timer('Normalizing states'):
+                #  if self.scale is None or self.bias is None:
+                    #  #for i in xrange(len(demos)):
+                    #  #    print len(demos[i]['demoX'])
+                    #  #    print self.allepisodes.path[i]
+                    #  states = np.vstack((demos[i]['demoX'] for i in xrange(len(demos)))) # hardcoded here to solve the memory issue
+                    #  states = states.reshape(-1, len(self.state_idx))
+                    #  # 1e-3 to avoid infs if some state dimensions don't change in the
+                    #  # first batch of samples
+                    #  self.scale = np.diag(
+                        #  1.0 / np.maximum(np.std(states, axis=0), 1e-3))
+                    #  self.bias = - np.mean(
+                        #  states.dot(self.scale), axis=0)
+                    #  # Save the scale and bias.
+                    #  with open('data/scale_and_bias_%s.pkl' % FLAGS.experiment, 'wb') as f:
+                        #  pickle.dump({'scale': self.scale, 'bias': self.bias}, f)
+                #  for key in xrange(len(demos)):
+                    #  self.allepisodes.traj[key]['demoX'] = demos[key]['demoX'].reshape(-1, len(self.state_idx))
+                    #  self.allepisodes.traj[key]['demoX'] = demos[key]['demoX'].dot(self.scale) + self.bias
+                    #  self.allepisodes.traj[key]['demoX'] = demos[key]['demoX'].reshape(-1, self.T, len(self.state_idx))
 
 
         self.alltestepisodes = NEEM()
@@ -169,9 +169,9 @@ class NEEMDataGenerator(object):
 
                         # Asil's idea
                         for t in range(len(1, current_samples['demoU'])):
-                            demos['demoX'][t-1] = demos['demoU'][t]
+                            current_samples['demoX'][t-1] = current_samples['demoU'][t]
 
-                        demos['demoX'][15] = demos['demoU'][15]
+                        current_samples['demoX'][15] = current_samples['demoU'][15]
 
                         demos['demoU'].append(current_samples['demoU'])
                         demos['demoX'].append(current_samples['demoX'])

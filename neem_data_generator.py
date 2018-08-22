@@ -166,6 +166,13 @@ class NEEMDataGenerator(object):
                         #episode_paths.append(current_path + '/imgs/animation.gif')
                         self.extract_txt(current_path)
                         current_samples = self.extract_experiment_data(current_path + "/" + fname)
+
+                        # Asil's idea
+                        for t in range(len(1, current_samples['demoU'])):
+                            demos['demoX'][t-1] = demos['demoU'][t]
+
+                        demos['demoX'][15] = demos['demoU'][15]
+
                         demos['demoU'].append(current_samples['demoU'])
                         demos['demoX'].append(current_samples['demoX'])
 

@@ -305,7 +305,7 @@ def main():
             #  val_image_tensors = data_generator.make_batch_tensor(network_config, train=False)
             #  inputa = val_image_tensors[:, :FLAGS.number_of_shot*FLAGS.TimeFrame, :]
             #  inputb = val_image_tensors[:, FLAGS.number_of_shot*FLAGS.TimeFrame:, :]
-            inputa, inputb = data_generator.make_batch_tensor(network_config)
+            inputa, inputb = data_generator.make_batch_tensor(network_config, train=False)
             val_input_tensors = {'inputa': inputa, 'inputb': inputb}
         model.init_network(graph, input_tensors=train_input_tensors)
         model.init_network(graph, input_tensors=val_input_tensors, prefix='Validation_')

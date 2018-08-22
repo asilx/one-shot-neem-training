@@ -189,7 +189,7 @@ class NEEMDataGenerator(object):
                         episode_paths.append(targetpath)
 
             for ind in xrange(rb_subrange_exp):
-                current_path = vr_experiment_subfolder[ind]
+                current_path = rb_experiment_subfolder[ind]
 
                 for fname in os.listdir(current_path):
                     if fname.endswith('.txt'):

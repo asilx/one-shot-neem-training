@@ -168,7 +168,7 @@ class NEEMDataGenerator(object):
                         current_samples = self.extract_experiment_data(current_path + "/" + fname)
 
                         # Asil's idea
-                        for t in range(len(1, current_samples['demoU'])):
+                        for t in range(1, len(current_samples['demoU'])):
                             current_samples['demoX'][t-1] = current_samples['demoU'][t]
 
                         current_samples['demoX'][15] = current_samples['demoU'][15]

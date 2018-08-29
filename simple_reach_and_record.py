@@ -51,7 +51,7 @@ class SimpleReachinRecordin(object):
         self.gripper = self.robot.get(FLAGS.gripper)
         self.tf_env = TransformListener()
     
-    def detect(self, query='{\"detect\":{\"color\":\"yellow\"}}'):
+    def detect(self, query='{\"detect\":{\"color\":\"red\"}}'):
         try:
             res = self.detector(query)
         except rospy.ServiceException, e:
@@ -73,6 +73,30 @@ class SimpleReachinRecordin(object):
 
         self.tf_env.waitForTransform(self.end_effector_frame, self.map_frame, rospy.Time(0),rospy.Duration(4.0))
         goal_reference = self.tf_env.transformPose("map", goal)
+        return goal_reference
+
+    def detect2(self, query='{\"detect\":{\"color\":\"white\"}}'):
+        try:
+            res = self.detector(query)
+        except rospy.ServiceException, e:
+            print "Service call failed: %s"%e
+        #if len(res.answer) != 1:
+        #    raise ValueError('more than one perceived objects that fit with the descriptor')
+        sol = res.answer[0]
+        object_info = json.loads(sol)
+        goal = PoseStamped()
+        goal.header.frame_id = object_info['boundingbox']['pose']['header']['frame_id']
+        goal.header.stamp = rospy.Time.now() - rospy.Duration(0.1)
+        goal.pose.position.x = object_info['boundingbox']['pose']['pose']['position']['x']
+        goal.pose.position.y = object_info['boundingbox']['pose']['pose']['position']['y']
+        goal.pose.position.z = object_info['boundingbox']['pose']['pose']['position']['z']
+        goal.pose.orientation.w = object_info['boundingbox']['pose']['pose']['orientation']['w']
+        goal.pose.orientation.x = object_info['boundingbox']['pose']['pose']['orientation']['x']
+        goal.pose.orientation.y = object_info['boundingbox']['pose']['pose']['orientation']['y']
+        goal.pose.orientation.z = object_info['boundingbox']['pose']['pose']['orientation']['z']
+
+        self.tf_env.waitForTransform(self.end_effector_frame, self.map_frame, rospy.Time(0),rospy.Duration(4.0))
+        goal_reference = self.tf_env.transformPose(self.end_effector_frame, goal)
         return goal_reference
 
     def return_observation(self, image_topic, end_effector_frame, object_pose):
@@ -125,7 +149,7 @@ class SimpleReachinRecordin(object):
          # self.whole_body.move_to_neutral()  # disabled for performance
         self.gripper.set_distance(0.1)
         rospy.loginfo("moving to %s" % target_pose)
-        gripper_offset = 0.06
+        gripper_offset = 0.09
         ek_offset = 0.0
         pregrasp_offset = 0.06
 
@@ -134,11 +158,9 @@ class SimpleReachinRecordin(object):
         # self.whole_body.looking_hand_constraint = True  # disabled for performance
 
         target_cds = {
-            "x": target_pose[0][0][0],
-            "y": target_pose[0][0][1],
-            "z": target_pose[0][0][2] + gripper_offset,
-            "ei": math.pi,
-            "ek": ek_offset,
+            "x": target_pose[0][0][0]/10000,
+            "y": target_pose[0][0][1]/10000,
+            "z": target_pose[0][0][2]/10000 + gripper_offset
         }
         moved = False
         print rospy.Time.now()  - rospy.Duration(0.1)
@@ -199,10 +221,175 @@ class SimpleReachinRecordin(object):
         rospy.sleep(3)  # omajinai
         # self.whole_body.move_to_neutral()  # disabled for performance
         return True, {"target_spot": "box"}
+
+    def reach2(self, target_pose):
+         # self.whole_body.move_to_neutral()  # disabled for performance
+        self.gripper.set_distance(0.1)
+        rospy.loginfo("moving to %s" % target_pose.pose.position)
+        gripper_offset = 0.06
+        ek_offset = math.pi / -2.0
+        pregrasp_offset = 0.06
+        self.whole_body.linear_weight = 100
+        self.whole_body.angular_weight = 100
+        #self.go_cancel()
+        #self.param_for_go()
+        # self.whole_body.looking_hand_constraint = True  # disabled for performance
+
+        target_cds = {
+            "x": target_pose.pose.position.x,
+            "y": target_pose.pose.position.y,
+            "z": target_pose.pose.position.z + gripper_offset,
+        }
+        moved = False
+        print rospy.Time.now()
+        try:
+            self.whole_body.move_end_effector_pose(
+                geometry.pose(**target_cds),
+                ref_frame_id=self.end_effector_frame)
+            print rospy.Time.now()
+            moved = True
+        except exceptions.MotionPlanningError as e:
+            rospy.logerr(e)
+            rospy.logerr(traceback.format_exc())
+            rospy.logwarn("Failed to plan pick motion from {0} to {1} from {2}".format(
+                self.whole_body.joint_positions,
+                target_cds,
+                self.end_effector_frame))
+        if not moved:
+            self.whole_body.move_to_neutral(wait=False, move_head=False)
+            rospy.logwarn("fallback to circle")
+            try:
+                # take some distance first, and then reach the object
+                # FIXME: how to prove that it is possible
+                #        to solve the 2 movements before sending commands?
+                target_cds["z"] -= gripper_offset
+                self.whole_body.move_end_effector_on_circle(
+                    center=geometry.pose(**target_cds),
+                    distance=pregrasp_offset + gripper_offset,
+                    ref_frame_id=self.end_effector_frame)
+                self.whole_body.move_end_effector_pose(
+                    pose=geometry.pose(z=pregrasp_offset),
+                    ref_frame_id=self.end_effector_frame)
+                print rospy.Time.now()
+                moved = True
+            except exceptions.MotionPlanningError as e:
+                    rospy.logerr(e)
+                    rospy.logerr(traceback.format_exc())
+
+        if not moved:
+            rospy.logwarn("fallback to rot")
+            target_cds["z"] += gripper_offset
+            target_cds["ek"] += math.pi/2.
+            try:
+                self.whole_body.move_end_effector_pose(
+                    geometry.pose(**target_cds),
+                    ref_frame_id=self.end_effector_frame)
+                print rospy.Time.now()
+                moved = True
+            except exceptions.MotionPlanningError as e:
+                rospy.logerr(e)
+                rospy.logerr(traceback.format_exc())
+
+        if not moved:
+            return False, {}
+
+        # self.whole_body.looking_hand_constraint = False  # disabled for performance
+        #self.param_for_normal()
+        #self.gripper.apply_force(0.6, True)
+        rospy.sleep(3)  # omajinai
+        # self.whole_body.move_to_neutral()  # disabled for performance
+        return True, {"target_spot": "box"}
+
+    def approach_right(self, target_pose):
+         # self.whole_body.move_to_neutral()  # disabled for performance
+        #self.gripper.set_distance(0.1)
+        rospy.loginfo("moving to %s" % target_pose.pose.position)
+        gripper_offset = 0.06
+        ek_offset = math.pi / -2.0
+        pregrasp_offset = 0.03
+        self.whole_body.linear_weight = 100
+        self.whole_body.angular_weight = 100
+        #self.go_cancel()
+        #self.param_for_go()
+        # self.whole_body.looking_hand_constraint = True  # disabled for performance
+
+        target_cds = {
+            "x": target_pose.pose.position.x,
+            "y": target_pose.pose.position.y,
+            "z": target_pose.pose.position.z - 0.09 - gripper_offset,
+        }
+        moved = False
+        try:
+            self.whole_body.move_end_effector_pose(
+                geometry.pose(**target_cds),
+                ref_frame_id=self.end_effector_frame)
+            moved = True
+        except exceptions.MotionPlanningError as e:
+            rospy.logerr(e)
+            rospy.logerr(traceback.format_exc())
+            rospy.logwarn("Failed to plan pick motion from {0} to {1} from {2}".format(
+                self.whole_body.joint_positions,
+                target_cds,
+                self.end_effector_frame))
+        if not moved:
+            self.whole_body.move_to_neutral(wait=False, move_head=False)
+            rospy.logwarn("fallback to circle")
+            try:
+                # take some distance first, and then reach the object
+                # FIXME: how to prove that it is possible
+                #        to solve the 2 movements before sending commands?
+                target_cds["z"] -= gripper_offset
+                self.whole_body.move_end_effector_on_circle(
+                    center=geometry.pose(**target_cds),
+                    distance=pregrasp_offset + gripper_offset,
+                    ref_frame_id=self.end_effector_frame)
+                self.whole_body.move_end_effector_pose(
+                    pose=geometry.pose(z=pregrasp_offset),
+                    ref_frame_id=self.end_effector_frame)
+                moved = True
+            except exceptions.MotionPlanningError as e:
+                    rospy.logerr(e)
+                    rospy.logerr(traceback.format_exc())
+
+        if not moved:
+            rospy.logwarn("fallback to rot")
+            target_cds["z"] += gripper_offset
+            target_cds["ek"] += math.pi/2.
+            try:
+                self.whole_body.move_end_effector_pose(
+                    geometry.pose(**target_cds),
+                    ref_frame_id=self.end_effector_frame)
+                moved = True
+            except exceptions.MotionPlanningError as e:
+                rospy.logerr(e)
+                rospy.logerr(traceback.format_exc())
+
+        if not moved:
+            return False, {}
+
+        # self.whole_body.looking_hand_constraint = False  # disabled for performance
+        #self.param_for_normal()
+        rospy.sleep(3)  # omajinai
+        self.whole_body.linear_weight = 1
+        self.whole_body.move_end_effector_by_line((0, 0, 1), 0.06)
+        self.gripper.apply_force(0.6, False)
+        rospy.sleep(0.5)  # omajinai
+        # self.whole_body.move_to_neutral()  # disabled for performance
+        return True, {"target_spot": "box"}
+
+    def push_left(self, target_pose):
+        print rospy.Time.now()
+        self.whole_body.move_end_effector_by_line((0, 0, 1), 0.10)
+        self.gripper.set_distance(0.1)
+        print rospy.Time.now()
+        return True, {"target_spot": "box"}
+
+
 def main():
     robot = SimpleReachinRecordin()
-    obj = robot.detect()
-    robot.reach(obj)
+    obj = robot.detect2()
+    robot.approach_right(obj)
+    robot.push_left(obj)
 
 if __name__ == "__main__":
     rospy.init_node('simple_reach_and_record')

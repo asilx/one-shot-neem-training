@@ -33,6 +33,7 @@ flags.DEFINE_integer('TimeFrame', 16, 'time horizon of the demo videos')
 #flags.DEFINE_integer('end_test_set_size', 1, 'size of the test set, 150 for sim_reach and 76 for sim push')
 #flags.DEFINE_integer('all_set_size', 1000, 'size of whole set')
 flags.DEFINE_integer('val_set_size', 100, 'size of the training set, 150 for sim_reach and 76 for sim push')
+flags.DEFINE_string('neems', '/media/asil/Tuna/others/', 'neem set in openease')
 
 flags.DEFINE_bool('clip', False, 'use gradient clipping for fast gradient')
 flags.DEFINE_float('clip_max', 10.0, 'maximum clipping value for fast gradient')
@@ -68,9 +69,10 @@ flags.DEFINE_string('featurizequery', 'A is 1.', 'neem set in openease')
 flags.DEFINE_string('initquery', 'register_ros_package(\'knowrob_openease\').', 'neem set in openease')
 flags.DEFINE_string('retractquery', 'rdf_retractall(A, B, C).', 'neem set in openease')
 flags.DEFINE_string('parsequery', 'owl_parse(\'%s\').', 'neem set in openease')
-flags.DEFINE_string('timequery', 'interval_start(\'http://knowrob.org/kb/unreal_log.owl#%s\', St).', 'neem set in openease')
+flags.DEFINE_string('reachtimequery', 'interval_start(\'http://knowrob.org/kb/unreal_log.owl#%s\', St).', 'neem set in openease')
+flags.DEFINE_string('pushtimequery', 'owl_individual_of(_A, knowrob:\'GraspingSomething\'), interval_start(_A, St), interval_end(_A, End), owl_individual_of(_B, knowrob:\'GraspingSomething\'), interval_start(_B, _St2), St < _St2.', 'neem set in openease')
 
-flags.DEFINE_string('data_path', 'path/to/data/', 'path to parent direcotry of others, low_res_data, low_res_robot_data')
+flags.DEFINE_string('data_path', '/media/asil/Tuna', 'path to parent direcotry of others, low_res_data, low_res_robot_data')
 
 flags.DEFINE_integer('im_width', 216, 'width of the images in the demo videos,  125 for sim_push, and 80 for sim_vision_reach')
 flags.DEFINE_integer('im_height', 120, 'height of the images in the demo videos, 125 for sim_push, and 64 for sim_vision_reach')
@@ -88,7 +90,7 @@ flags.DEFINE_string('init', 'random', 'initializer for conv weights. Choose amon
 flags.DEFINE_bool('max_pool', False, 'Whether or not to use max pooling rather than strided convolutions')
 flags.DEFINE_bool('stop_grad', False, 'if True, do not use second derivatives in meta-optimization (for speed)')
 
-flags.DEFINE_string('experiment', 'agents-playing-things', 'experiment path relative to neem')
+flags.DEFINE_string('experiment', 'pushing', 'experiment path relative to neem')
 
 flags.DEFINE_integer('random_seed', 0, 'random seed for training')
 flags.DEFINE_float('gpu_memory_fraction', 0.6, 'fraction of memory used in gpu')
@@ -289,11 +291,15 @@ def main():
     }
 
     data_generator = DataGenerator()
-    state_idx = data_generator.state_idx
+    if FLAGS.train:
+        state_idx = data_generator.state_idx
+    else:
+        state_idx = range(7)
+        data_generator._dU = 7
     img_idx = range(len(state_idx), len(state_idx)+FLAGS.im_height*FLAGS.im_width*FLAGS.num_channels)
     model = MIL(data_generator._dU, state_idx=state_idx, img_idx=img_idx, network_config=network_config)
 
-    log_dir = os.path.join( FLAGS.data_path, 'logged_model')
+    log_dir = os.path.join( FLAGS.data_path, 'logged_model_korea2')
 
     if FLAGS.train:
         with graph.as_default():
@@ -331,7 +337,7 @@ def main():
         train(graph, model, saver, sess, data_generator, log_dir)
     else:
         robot_data_path = os.path.join( FLAGS.data_path, 'low_res_robot_data')
-        load_one_shot_data_from_path(robo_data_path, data_generator, network_config)
+        load_one_shot_data_from_path(robot_data_path, data_generator, network_config)
         control_robot(graph, model, data_generator, sess, 'reach', log_dir)
 
 

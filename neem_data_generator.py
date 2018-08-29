@@ -61,7 +61,8 @@ class NEEMDataGenerator(object):
         self.initquery = FLAGS.initquery
         self.retractquery = FLAGS.retractquery
         self.parsequery = FLAGS.parsequery
-        self.timequery = FLAGS.timequery
+        self.reachtimequery = FLAGS.reachtimequery
+        self.pushtimequery = FLAGS.pushtimequery
 
         prologinstance = PQ()
         prologinstance.prolog_query(self.initquery)
@@ -70,40 +71,38 @@ class NEEMDataGenerator(object):
         experiment_subfolder_lengths = []
 
         self.allepisodes = NEEM()
-
-        self.allepisodes.paths, self.allepisodes.traj = self.bring_episodes_to_memory(experiment_folders)
-        demos = self.allepisodes.traj
-        self.state_idx = range(demos[0]['demoX'].shape[-1])
-        self._dU = demos[0]['demoU'].shape[-1]
-        #  if FLAGS.train:
+        if FLAGS.train:
+            self.allepisodes.paths, self.allepisodes.traj = self.bring_episodes_to_memory(experiment_folders)
+            demos = self.allepisodes.traj
+            self.state_idx = range(demos[0]['demoX'].shape[-1])
+            self._dU = demos[0]['demoU'].shape[-1]
+            if FLAGS.train:
             #  # Normalize the states if it's training.
-            #  with Timer('Normalizing states'):
-                #  if self.scale is None or self.bias is None:
-                    #  #for i in xrange(len(demos)):
-                    #  #    print len(demos[i]['demoX'])
-                    #  #    print self.allepisodes.path[i]
-                    #  states = np.vstack((demos[i]['demoX'] for i in xrange(len(demos)))) # hardcoded here to solve the memory issue
-                    #  states = states.reshape(-1, len(self.state_idx))
-                    #  # 1e-3 to avoid infs if some state dimensions don't change in the
-                    #  # first batch of samples
-                    #  self.scale = np.diag(
-                        #  1.0 / np.maximum(np.std(states, axis=0), 1e-3))
-                    #  self.bias = - np.mean(
-                        #  states.dot(self.scale), axis=0)
-                    #  # Save the scale and bias.
-                    #  with open('data/scale_and_bias_%s.pkl' % FLAGS.experiment, 'wb') as f:
-                        #  pickle.dump({'scale': self.scale, 'bias': self.bias}, f)
-                #  for key in xrange(len(demos)):
-                    #  self.allepisodes.traj[key]['demoX'] = demos[key]['demoX'].reshape(-1, len(self.state_idx))
-                    #  self.allepisodes.traj[key]['demoX'] = demos[key]['demoX'].dot(self.scale) + self.bias
-                    #  self.allepisodes.traj[key]['demoX'] = demos[key]['demoX'].reshape(-1, self.T, len(self.state_idx))
+                with Timer('Normalizing states'):
+                    if self.scale is None or self.bias is None:
+                        for i in xrange(len(demos)):
+                            print len(demos[i]['demoX'])
+                            print self.allepisodes.paths[i]
+                        states = np.vstack((demos[i]['demoX'] for i in xrange(len(demos)))) # hardcoded here to solve the memory issue
+                        states = states.reshape(-1, len(self.state_idx))
+                        # 1e-3 to avoid infs if some state dimensions don't change in the
+                        # first batch of samples
+                        self.scale = np.diag(1.0 / np.maximum(np.std(states, axis=0), 1e-3))
+                        self.bias = - np.mean(
+                            states.dot(self.scale), axis=0)
+                        # Save the scale and bias.
+                        with open('data/scale_and_bias_%s.pkl' % FLAGS.experiment, 'wb') as f:
+                            pickle.dump({'scale': self.scale, 'bias': self.bias}, f)
+                    for key in xrange(len(demos)):
+                        self.allepisodes.traj[key]['demoX'] = demos[key]['demoX'].reshape(-1, len(self.state_idx))
+                        self.allepisodes.traj[key]['demoX'] = demos[key]['demoX'].dot(self.scale) + self.bias
+                        self.allepisodes.traj[key]['demoX'] = demos[key]['demoX'].reshape(-1, self.T, len(self.state_idx))
 
 
-        self.alltestepisodes = NEEM()
+            self.alltestepisodes = NEEM()
         #self.alltestepisodes.indices, self.alltestepisodes.paths = self.sample_idx(FLAGS.end_test_set_size, FLAGS.number_of_shot_test, 0)
 
-        # generate episode batches for training
-        if FLAGS.train:
+        # generate episode batches for trainingn:
             self.alltrainepisodes = Sample()
             self.allvalidationepisodes = Sample()
 
@@ -126,6 +125,8 @@ class NEEMDataGenerator(object):
     def create_sub_gif(self, path, targetpath, start, end):
         frame = Image.open(path)
         images = []
+        print start
+        print end
         for x in range(int(3 * math.floor(start)), (int(3* math.floor(end)) + 1)):
             try:
                 frame.seek(x)
@@ -134,9 +135,23 @@ class NEEMDataGenerator(object):
                 images.append(np.array(new_im))
             except EOFError:
                 break;
+            if len(images) == self.T:
+                break;
         if len(images) < self.T:
             print 'Subgif frame count is less than 16. Fixing it'
-            self.create_sub_gif(path, targetpath, start - 5, end - 5)
+            missing_frames = self.T - len(images)
+            for x in range(len(images)):
+                try:
+                    frame.seek(int(3* math.floor(end)))
+                    new_im = Image.new("RGB", frame.size)
+                    new_im.paste(frame)
+                    images.append(np.array(new_im))
+                except EOFError:
+                    break;
+                if len(images) == self.T:
+                    break;
+            #self.create_sub_gif(path, targetpath, start - 5, end - 5)
+            imageio.mimsave(targetpath, images)
         else:
             imageio.mimsave(targetpath, images)
 
@@ -146,8 +161,13 @@ class NEEMDataGenerator(object):
         traj = []
         for idx in xrange(range_exp):
             experiment_subfolder = set(natsorted(glob.glob(folders[idx] + '/*')))
-            rb_experiment_subfolder = set(natsorted(glob.glob(folders[idx] + '/*-Robot*')))
-            vr_experiment_subfolder = list(experiment_subfolder - rb_experiment_subfolder)
+            if FLAGS.experiment == 'reaching':
+                rb_experiment_subfolder = set(natsorted(glob.glob(folders[idx] + '/*-Robot*')))
+                sb_experiment_subfolder = set(natsorted(glob.glob(folders[idx] + '/*-Push*')))
+            else: 
+                rb_experiment_subfolder = set(natsorted(glob.glob(folders[idx] + '/*-Push*')))
+                sb_experiment_subfolder = set(natsorted(glob.glob(folders[idx] + '/*-Robot*')))
+            vr_experiment_subfolder = list(experiment_subfolder - rb_experiment_subfolder - sb_experiment_subfolder)
             rb_experiment_subfolder = list(rb_experiment_subfolder)
 
             #  subrange_exp = len(experiment_subfolder)
@@ -164,17 +184,13 @@ class NEEMDataGenerator(object):
                 for fname in os.listdir(current_path):
                     if fname.endswith('.txt'):
                         #episode_paths.append(current_path + '/imgs/animation.gif')
-                        self.extract_txt(current_path)
-                        current_samples = self.extract_experiment_data(current_path + "/" + fname)
+                        
 
                         # Asil's idea
-                        for t in range(1, len(current_samples['demoU'])):
-                            current_samples['demoX'][t-1] = current_samples['demoU'][t]
+                        #for t in range(1, len(current_samples['demoU'])):
+                        #    current_samples['demoU'][t-1] = current_samples['demoX'][t]
 
-                        current_samples['demoX'][15] = current_samples['demoU'][15]
-
-                        demos['demoU'].append(current_samples['demoU'])
-                        demos['demoX'].append(current_samples['demoX'])
+                        #current_samples['demoU'][15] = current_samples['demoX'][15]
 
                         retractinstance = PQ()
                         retractinstance.prolog_query(self.retractquery)
@@ -182,18 +198,42 @@ class NEEMDataGenerator(object):
                         parseinstance = PQ()
                         parseinstance.prolog_query(self.parsequery % neem_path)
                         timeinstance = PQ()
-                        taskname = os.path.basename(fname).replace('.txt', '')
-                        solutions = timeinstance.prolog_query(self.timequery % taskname)
                         endtime = -1
-                        for s in solutions:
-                            for k, v in s.items():
-                                endtime = v
-                        starttime = endtime - 6
-                        endtime = endtime - 1
-                        print endtime
-                        targetpath = current_path + '/imgs/' + taskname + '.gif'
-                        self.create_sub_gif(current_path + '/imgs/animation.gif', targetpath, starttime, endtime)
-                        episode_paths.append(targetpath)
+                        starttime = -1
+                        targetpath = ''
+                        basefile = os.path.basename(fname)
+                        if FLAGS.experiment == 'reaching' and basefile != "push.txt":
+                            self.extract_txt(current_path)
+                            current_samples = self.extract_experiment_data(current_path + "/" + fname)
+                            demos['demoU'].append(current_samples['demoU'])
+                            demos['demoX'].append(current_samples['demoX'])
+                            taskname = basefile.replace('.txt', '')
+                            solutions = timeinstance.prolog_query(self.reachtimequery % taskname)
+                            for s in solutions:
+                                for k, v in s.items():
+                                    endtime = v
+                            starttime = endtime - 6
+                            endtime = endtime - 1
+                            targetpath = current_path + '/imgs/' + taskname + '.gif'
+                            self.create_sub_gif(current_path + '/imgs/animation.gif', targetpath, starttime, endtime)
+                            episode_paths.append(targetpath)
+                        elif FLAGS.experiment == 'pushing' and basefile == "push.txt":
+                            self.extract_txt(current_path)
+                            current_samples = self.extract_experiment_data(current_path + "/" + fname)
+                            demos['demoU'].append(current_samples['demoU'])
+                            demos['demoX'].append(current_samples['demoX'])
+                            solutions = timeinstance.prolog_query(self.pushtimequery)
+                            for s in solutions:
+                                for k, v in s.items():
+                                    if k == 'St':
+                                        starttime = v
+                                    elif k == 'End':
+                                        endtime = v
+                            targetpath = current_path + '/imgs/push.gif'
+                            self.create_sub_gif(current_path + '/imgs/animation.gif', targetpath, starttime, endtime)
+                            episode_paths.append(targetpath)
+                         #else 
+                         #   episode_paths.append(current_path + '/imgs/animation.gif')
 
             for ind in xrange(rb_subrange_exp):
                 current_path = rb_experiment_subfolder[ind]
@@ -278,6 +318,9 @@ class NEEMDataGenerator(object):
                 content['demoX'].append(np.array(sample))
             else:
                 content['demoU'].append(np.array(sample))
+        if len(content['demoX']) > self.T:
+            content['demoX'] = content['demoX'][0:self.T]
+            content['demoU'] = content['demoU'][0:self.T]
         return content
 
     def make_batch_tensor(self, network_config, train=True):

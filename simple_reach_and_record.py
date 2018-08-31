@@ -25,6 +25,7 @@ from tensorflow.python.platform import flags
 
 FLAGS = flags.FLAGS
 
+#flags.DEFINE_string('experiment', 'pushing', 'experiment path relative to neem')
 flags.DEFINE_string('map_frame', 'map', '')
 flags.DEFINE_string('base_frame', 'base_link', '')
 flags.DEFINE_string('sensor_frame', 'map', '')
@@ -51,7 +52,7 @@ class SimpleReachinRecordin(object):
         self.gripper = self.robot.get(FLAGS.gripper)
         self.tf_env = TransformListener()
     
-    def detect(self, query='{\"detect\":{\"color\":\"red\"}}'):
+    def detect(self, query='{\"detect\":{\"color\":\"white\"}}'):
         try:
             res = self.detector(query)
         except rospy.ServiceException, e:
@@ -146,7 +147,7 @@ class SimpleReachinRecordin(object):
         return cv2_img, pos,pos_speed 
 
     def reach(self, target_pose):
-         # self.whole_body.move_to_neutral()  # disabled for performance
+        # self.whole_body.move_to_neutral()  # disabled for performance
         self.gripper.set_distance(0.1)
         rospy.loginfo("moving to %s" % target_pose)
         gripper_offset = 0.09
@@ -163,12 +164,10 @@ class SimpleReachinRecordin(object):
             "z": target_pose[0][0][2]/10000 + gripper_offset
         }
         moved = False
-        print rospy.Time.now()  - rospy.Duration(0.1)
         try:
             self.whole_body.move_end_effector_pose(
                 geometry.pose(**target_cds),
                 ref_frame_id="obj_of_interest")
-            print rospy.Time.now()  - rospy.Duration(0.1)
             moved = True
         except exceptions.MotionPlanningError as e:
             rospy.logerr(e)
@@ -223,8 +222,8 @@ class SimpleReachinRecordin(object):
         return True, {"target_spot": "box"}
 
     def reach2(self, target_pose):
-         # self.whole_body.move_to_neutral()  # disabled for performance
-        self.gripper.set_distance(0.1)
+        # self.whole_body.move_to_neutral()  # disabled for performance
+        #self.gripper.set_distance(0.1)
         rospy.loginfo("moving to %s" % target_pose.pose.position)
         gripper_offset = 0.06
         ek_offset = math.pi / -2.0
@@ -303,7 +302,7 @@ class SimpleReachinRecordin(object):
     def approach_right(self, target_pose):
          # self.whole_body.move_to_neutral()  # disabled for performance
         #self.gripper.set_distance(0.1)
-        rospy.loginfo("moving to %s" % target_pose.pose.position)
+        rospy.loginfo("approaching to %s" % target_pose.pose.position)
         gripper_offset = 0.06
         ek_offset = math.pi / -2.0
         pregrasp_offset = 0.03
@@ -377,19 +376,70 @@ class SimpleReachinRecordin(object):
         # self.whole_body.move_to_neutral()  # disabled for performance
         return True, {"target_spot": "box"}
 
-    def push_left(self, target_pose):
+    def push_left(self):
         print rospy.Time.now()
         self.whole_body.move_end_effector_by_line((0, 0, 1), 0.10)
         self.gripper.set_distance(0.1)
         print rospy.Time.now()
         return True, {"target_spot": "box"}
 
+    def push_left_feedback(self, target_pose):
+        self.whole_body.linear_weight = 1
+
+        goal = PoseStamped()
+        goal.header.frame_id = "obj_of_interest"
+        goal.header.stamp = rospy.Time.now() - rospy.Duration(0.1)
+        goal.pose.position.x = target_pose[0][0][0]
+        goal.pose.position.y = target_pose[0][0][1]
+        goal.pose.position.z = target_pose[0][0][2]
+        goal.pose.orientation.w = 1
+        goal.pose.orientation.x = 0
+        goal.pose.orientation.y = 0
+        goal.pose.orientation.z = 0
+
+        self.tf_env.waitForTransform(self.end_effector_frame, "obj_of_interest", rospy.Time(0),rospy.Duration(4.0))
+        goal = self.tf_env.transformPose(self.end_effector_frame, goal)
+
+        rospy.loginfo("moving to %s" % goal.pose.position)
+        #velocity control kicks in
+        x = goal.pose.position.x  #target_pose[0][0][0]
+        abs_x = abs(x)
+        y = goal.pose.position.y  #target_pose[0][0][1]
+        abs_y = abs(x)
+        z = goal.pose.position.z  #target_pose[0][0][2]
+        abs_z = abs(x)
+        total = abs_x + abs_y + abs_z 
+        self.whole_body.move_end_effector_by_line((x/total, y/total, z/total), 0.03)
+        return True, {"target_spot": "box"}
+
+    def push_left_feedback2(self, target_pose):
+        self.whole_body.linear_weight = 1
+        self.whole_body.angular_weight = 1
+
+        goal = PoseStamped()
+        goal.header.frame_id = "obj_of_interest"
+        goal.header.stamp = rospy.Time.now() - rospy.Duration(0.1)
+        goal.pose.position.x = target_pose[0][0][0] / 10000
+        goal.pose.position.y = target_pose[0][0][1] / 10000
+        goal.pose.position.z = target_pose[0][0][2] / 10000
+        goal.pose.orientation.w = 1
+        goal.pose.orientation.x = 0
+        goal.pose.orientation.y = 0
+        goal.pose.orientation.z = 0
+
+        self.tf_env.waitForTransform(self.end_effector_frame, "obj_of_interest", rospy.Time(0),rospy.Duration(4.0))
+        rospy.loginfo("moving to %s" % goal.pose.position)
+        self.reach2(goal)
+
 
 def main():
     robot = SimpleReachinRecordin()
     obj = robot.detect2()
-    robot.approach_right(obj)
-    robot.push_left(obj)
+    if FLAGS.experiment == 'pushing':
+        robot.approach_right(obj)
+        robot.push_left()
+    else:
+        robot.reach(obj)
 
 if __name__ == "__main__":
     rospy.init_node('simple_reach_and_record')

@@ -27,7 +27,7 @@ flags.DEFINE_integer('number_of_shot_test', 1, 'number of demos used during test
 
 #flags.DEFINE_integer('metatrain_iterations', 1, 'number of metatraining iterations.')
 flags.DEFINE_integer('metatrain_iterations', 50000, 'number of metatraining iterations.')
-flags.DEFINE_integer('meta_batch_size', 1, 'number of tasks sampled per meta-update')
+flags.DEFINE_integer('meta_batch_size', 5, 'number of tasks sampled per meta-update')
 flags.DEFINE_float('meta_lr', 0.001, 'the base learning rate of the generator')
 flags.DEFINE_integer('TimeFrame', 16, 'time horizon of the demo videos')
 #flags.DEFINE_integer('end_test_set_size', 1, 'size of the test set, 150 for sim_reach and 76 for sim push')
@@ -107,7 +107,7 @@ flags.DEFINE_bool('conv', True, 'whether or not to use a convolutional network, 
 
 flags.DEFINE_bool('train', False, 'training or testing')
 flags.DEFINE_bool('resume', True, 'resume training if there is a model available')
-flags.DEFINE_integer('restore_iter', 49999, 'iteration to load model (-1 for latest model)')
+flags.DEFINE_integer('restore_iter', 59999, 'iteration to load model (-1 for latest model)')
 
 def train(graph, model, saver, sess, data_generator, log_dir):
     """
@@ -299,7 +299,7 @@ def main():
     img_idx = range(len(state_idx), len(state_idx)+FLAGS.im_height*FLAGS.im_width*FLAGS.num_channels)
     model = MIL(data_generator._dU, state_idx=state_idx, img_idx=img_idx, network_config=network_config)
 
-    log_dir = os.path.join( FLAGS.data_path, 'logged_model_korea2')
+    log_dir = os.path.join( FLAGS.data_path, 'logged_model')
 
     if FLAGS.train:
         with graph.as_default():
@@ -338,17 +338,27 @@ def main():
     else:
         robot_data_path = os.path.join( FLAGS.data_path, 'low_res_robot_data')
         load_one_shot_data_from_path(robot_data_path, data_generator, network_config)
-        control_robot(graph, model, data_generator, sess, 'reach', log_dir)
-
+        if FLAGS.experiment == 'reaching':
+            control_robot(graph, model, data_generator, sess, 'reach', log_dir)
+        else:
+            control_robot(graph, model, data_generator, sess, 'push', log_dir)
 
 def control_robot(graph, model, data_generator, sess, exp_string, log_dir):
     REACH_SUCCESS_THRESH = 0.05
-    REACH_SUCCESS_TIME_RANGE = 10
+    PUSH_SUCCESS_THRESH = 0.13
+    SUCCESS_TIME_RANGE = 10
     robot = HSRBMover()
+
+    if FLAGS.experiment == 'pushing':
+        obj = robot.detect2()
+        robot.approach_right(obj)
+        rospy.sleep(2)
+
 
     T = model.T
     scale, bias = load_scale_and_bias('data/scale_and_bias_%s.pkl' % FLAGS.experiment)
     successes = []
+    dists = []
     selected_demo = data_generator.selected_demo
     for i in xrange(len(selected_demo['selected_demoX'])):
         selected_demoO = selected_demo['selected_demoO'][i]
@@ -379,25 +389,24 @@ def control_robot(graph, model, data_generator, sess, exp_string, log_dir):
             with graph.as_default():
                 print model.test_act_op
                 action = sess.run(model.test_act_op, feed_dict=feed_dict)
-            robot.reach(action)
+
+            if FLAGS.experiment == 'reaching':
+                robot.reach(action)
+            else:
+                robot.push_left_feedback2(action)
             _, after_state, _ = robot.return_observation(FLAGS.image_topic, FLAGS.end_effector_frame, obj)
             #ob, reward, done, reward_dict = env.step(np.squeeze(action))
             dist = (after_state[0]**2 + after_state[1]**2 + after_state[2]**2) **(.5)
-            if t >= T - REACH_SUCCESS_TIME_RANGE:
+            print "Distance is %s" % dist
+            if t >= T - SUCCESS_TIME_RANGE:
                 dists.append(dist)
-        if np.amin(dists) <= REACH_SUCCESS_THRESH:
+            if dist >= PUSH_SUCCESS_THRESH and FLAGS.experiment == 'pushing':
+                successes.append(1.)
+                robot.gripper.set_distance(0.1)
+        if np.amin(dists) <= REACH_SUCCESS_THRESH and FLAGS.experiment == 'reaching':
             successes.append(1.)
         else:
             successes.append(0.)
-        #env.render(close=True)
-        if i % 5  == 0:
-            print "Task %d: current success rate is %.5f" % (i, np.mean(successes))
-    success_rate_msg = "Final success rate is %.5f" % (np.mean(successes))
-    print success_rate_msg
-    with open('logs/log_%s.txt' % FLAGS.experiment, 'a') as f:
-        f.write(exp_string + ':\n')
-        f.write(success_rate_msg + '\n')
-
 
 
 if __name__ == "__main__":

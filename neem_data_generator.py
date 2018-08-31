@@ -76,27 +76,27 @@ class NEEMDataGenerator(object):
             demos = self.allepisodes.traj
             self.state_idx = range(demos[0]['demoX'].shape[-1])
             self._dU = demos[0]['demoU'].shape[-1]
-            if FLAGS.train:
+            #if FLAGS.train:
             #  # Normalize the states if it's training.
-                with Timer('Normalizing states'):
-                    if self.scale is None or self.bias is None:
-                        for i in xrange(len(demos)):
-                            print len(demos[i]['demoX'])
-                            print self.allepisodes.paths[i]
-                        states = np.vstack((demos[i]['demoX'] for i in xrange(len(demos)))) # hardcoded here to solve the memory issue
-                        states = states.reshape(-1, len(self.state_idx))
+                #with Timer('Normalizing states'):
+                    #if self.scale is None or self.bias is None:
+                        #for i in xrange(len(demos)):
+                            #print len(demos[i]['demoX'])
+                            #print self.allepisodes.paths[i]
+                        #states = np.vstack((demos[i]['demoX'] for i in xrange(len(demos)))) # hardcoded here to solve the memory issue
+                        #states = states.reshape(-1, len(self.state_idx))
                         # 1e-3 to avoid infs if some state dimensions don't change in the
                         # first batch of samples
-                        self.scale = np.diag(1.0 / np.maximum(np.std(states, axis=0), 1e-3))
-                        self.bias = - np.mean(
-                            states.dot(self.scale), axis=0)
+                        #self.scale = np.diag(1.0 / np.maximum(np.std(states, axis=0), 1e-3))
+                        #self.bias = - np.mean(
+                            #states.dot(self.scale), axis=0)
                         # Save the scale and bias.
-                        with open('data/scale_and_bias_%s.pkl' % FLAGS.experiment, 'wb') as f:
-                            pickle.dump({'scale': self.scale, 'bias': self.bias}, f)
-                    for key in xrange(len(demos)):
-                        self.allepisodes.traj[key]['demoX'] = demos[key]['demoX'].reshape(-1, len(self.state_idx))
-                        self.allepisodes.traj[key]['demoX'] = demos[key]['demoX'].dot(self.scale) + self.bias
-                        self.allepisodes.traj[key]['demoX'] = demos[key]['demoX'].reshape(-1, self.T, len(self.state_idx))
+                        #with open('data/scale_and_bias_%s.pkl' % FLAGS.experiment, 'wb') as f:
+                            #pickle.dump({'scale': self.scale, 'bias': self.bias}, f)
+                    #for key in xrange(len(demos)):
+                        #self.allepisodes.traj[key]['demoX'] = demos[key]['demoX'].reshape(-1, len(self.state_idx))
+                        #self.allepisodes.traj[key]['demoX'] = demos[key]['demoX'].dot(self.scale) + self.bias
+                        #self.allepisodes.traj[key]['demoX'] = demos[key]['demoX'].reshape(-1, self.T, len(self.state_idx))
 
 
             self.alltestepisodes = NEEM()
@@ -125,8 +125,6 @@ class NEEMDataGenerator(object):
     def create_sub_gif(self, path, targetpath, start, end):
         frame = Image.open(path)
         images = []
-        print start
-        print end
         for x in range(int(3 * math.floor(start)), (int(3* math.floor(end)) + 1)):
             try:
                 frame.seek(x)
@@ -140,7 +138,7 @@ class NEEMDataGenerator(object):
         if len(images) < self.T:
             print 'Subgif frame count is less than 16. Fixing it'
             missing_frames = self.T - len(images)
-            for x in range(len(images)):
+            for x in range(missing_frames):
                 try:
                     frame.seek(int(3* math.floor(end)))
                     new_im = Image.new("RGB", frame.size)
@@ -150,10 +148,8 @@ class NEEMDataGenerator(object):
                     break;
                 if len(images) == self.T:
                     break;
-            #self.create_sub_gif(path, targetpath, start - 5, end - 5)
-            imageio.mimsave(targetpath, images)
-        else:
-            imageio.mimsave(targetpath, images)
+             #self.create_sub_gif(path, targetpath, start - 5, end - 5)
+        imageio.mimsave(targetpath, images)
 
     def bring_episodes_to_memory(self, folders):
         range_exp = len(folders)
@@ -184,14 +180,6 @@ class NEEMDataGenerator(object):
                 for fname in os.listdir(current_path):
                     if fname.endswith('.txt'):
                         #episode_paths.append(current_path + '/imgs/animation.gif')
-                        
-
-                        # Asil's idea
-                        #for t in range(1, len(current_samples['demoU'])):
-                        #    current_samples['demoU'][t-1] = current_samples['demoX'][t]
-
-                        #current_samples['demoU'][15] = current_samples['demoX'][15]
-
                         retractinstance = PQ()
                         retractinstance.prolog_query(self.retractquery)
                         neem_path = os.path.join(self.neems, os.path.basename(current_path), 'v0/log.owl')
@@ -220,6 +208,10 @@ class NEEMDataGenerator(object):
                         elif FLAGS.experiment == 'pushing' and basefile == "push.txt":
                             self.extract_txt(current_path)
                             current_samples = self.extract_experiment_data(current_path + "/" + fname)
+                            # Asil's idea
+                            for t in range(1, len(current_samples['demoU'])):
+                                current_samples['demoU'][t-1] = current_samples['demoX'][t]
+                            current_samples['demoU'][15] = current_samples['demoX'][15]
                             demos['demoU'].append(current_samples['demoU'])
                             demos['demoX'].append(current_samples['demoX'])
                             solutions = timeinstance.prolog_query(self.pushtimequery)
@@ -243,6 +235,10 @@ class NEEMDataGenerator(object):
                         #episode_paths.append(current_path + '/imgs/animation.gif')
                         self.extract_txt(current_path)
                         current_samples = self.extract_experiment_data(current_path + "/" + fname)
+                        if FLAGS.experiment == 'pushing':
+                            for t in range(1, len(current_samples['demoU'])):
+                                current_samples['demoU'][t-1] = current_samples['demoX'][t]
+                            current_samples['demoU'][15] = current_samples['demoX'][15]
                         demos['demoU'].append(current_samples['demoU'])
                         demos['demoX'].append(current_samples['demoX'])
 
@@ -390,12 +386,14 @@ class NEEMDataGenerator(object):
         for i in xrange(self.meta_batch_size):
             image = vr_images[i*(self.number_of_shot):(i+1)*(self.number_of_shot)]
             image = tf.reshape(image, [(self.number_of_shot)*self.T, -1])
+            print image.get_shape()
             vr_all_images.append(image)
 
         rb_all_images = []
         for i in xrange(self.meta_batch_size):
             image = rb_images[i*(self.test_batch_size):(i+1)*(self.test_batch_size)]
             image = tf.reshape(image, [(self.test_batch_size)*self.T, -1])
+            print image.get_shape()
             rb_all_images.append(image)
 
         return tf.stack(vr_all_images), tf.stack(rb_all_images)
